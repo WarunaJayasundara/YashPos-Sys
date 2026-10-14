@@ -6,11 +6,14 @@
 roles, per-permission editing, per-role discount limits, supervisor approval dialog, cost and profit fields removed
 from API responses for unauthorised users, account deactivation, password change, login rate limiting, audit log.
 
-**Products**: SKU (unique), barcode (EAN/UPC check-digit validation), name, description, category, brand, supplier,
+**Products**: only a name and a selling price are required (anything can be sold, e.g. a TV); everything else is optional.
+SKU (unique, generated automatically as P-00001... when left empty), barcode (EAN/UPC check-digit validation), description, category
+(items without one appear as "Other" in the POS and "No category" in reports), brand, supplier,
 model compatibility, colour, size, connector, variant group, buying price, weighted average cost, selling and minimum
 price, stock on hand / reserved / available, reorder and overstock levels with LOW / OUT / OVER badges, warranty
 months, image upload, active flag. Search, filters, paging, CSV export, all-or-nothing CSV import with row errors,
-price-change history, lifetime units/revenue/COGS/profit per product, stock movement history.
+price-change history, lifetime units/revenue/COGS/profit per product, stock movement history. From the POS, a search
+that finds nothing offers "Add as a new product", which creates it and puts it on the bill.
 
 **Purchases and suppliers**: suppliers with balances, purchase orders (draft/ordered), partial deliveries with
 received / damaged / missing quantities, stock increases only on receipt, landed cost (freight allocated by value),
@@ -60,7 +63,7 @@ Inter typeface.
 ## How it was verified
 
 Automated (all passing at the time of writing):
-- **API, 43 tests** (`server/tests`), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
+- **API, 44 tests** (`server/tests`), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
   rate limiting, session revocation, cashier/manager restrictions on cost data and owner-only reports; product
   validation (duplicate SKU, barcode check digit, negative price, min > selling), price history, stock filters,
   price-change approval; purchase orders not changing stock, partial receipt with damaged units, freight allocation and

@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Prisma, type Product } from '@prisma/client';
-import { prisma } from '../db.js';
+import { prisma, nextSequence, type Tx } from '../db.js';
 import { ah, parse, badRequest, notFound } from '../lib/http.js';
 import { can, requirePerm, resolveApproval } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
@@ -31,11 +31,12 @@ const money = z.coerce.number().finite().min(0).max(100_000_000);
 
 const productSchema = z
   .object({
-    sku: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9\-_.]+$/, 'SKU may contain letters, digits, - _ .'),
+    // optional: generated when left empty
+    sku: opt(z.string().trim().max(40).refine((v) => v === '' || /^[A-Za-z0-9\-_.]{2,40}$/.test(v), 'SKU may contain letters, digits, - _ .')),
     barcode: opt(z.string().trim().max(40)),
     name: z.string().trim().min(2).max(160),
     description: opt(z.string().max(5000)),
-    categoryId: z.number().int().positive(),
+    categoryId: opt(z.number().int().positive()),
     brandId: opt(z.number().int().positive()),
     supplierId: opt(z.number().int().positive()),
     variantGroup: opt(z.string().trim().max(60)),
@@ -45,7 +46,7 @@ const productSchema = z
     connectorType: opt(z.string().trim().max(40)),
     purchasePrice: money.default(0),
     sellingPrice: money,
-    minSellingPrice: money,
+    minSellingPrice: opt(money), // defaults to the selling price
     reorderLevel: z.number().int().min(0).max(100_000).default(5),
     maxStockLevel: opt(z.number().int().min(0).max(1_000_000)),
     warrantyMonths: z.number().int().min(0).max(120).default(0),
@@ -53,7 +54,7 @@ const productSchema = z
     isActive: z.boolean().default(true),
     openingStock: z.number().int().min(0).max(1_000_000).default(0),
   })
-  .refine((p) => p.minSellingPrice <= p.sellingPrice, { message: 'Minimum price cannot exceed the selling price', path: ['minSellingPrice'] })
+  .refine((p) => p.minSellingPrice == null || p.minSellingPrice <= p.sellingPrice, { message: 'Minimum price cannot exceed the selling price', path: ['minSellingPrice'] })
   .refine((p) => !p.barcode || validBarcode(p.barcode), { message: 'Barcode is not valid (check digit or characters)', path: ['barcode'] });
 
 export function stockStatus(p: Pick<Product, 'qtyOnHand' | 'qtyReserved' | 'reorderLevel' | 'maxStockLevel'>) {
@@ -62,6 +63,14 @@ export function stockStatus(p: Pick<Product, 'qtyOnHand' | 'qtyReserved' | 'reor
   if (avail <= p.reorderLevel) return 'LOW';
   if (p.maxStockLevel != null && p.qtyOnHand > p.maxStockLevel) return 'OVER';
   return 'OK';
+}
+
+/** Next free automatic SKU, e.g. P-00042 (skips any taken by hand). */
+export async function generateSku(tx: Tx) {
+  for (;;) {
+    const sku = `P-${String(await nextSequence(tx, 'SKU')).padStart(5, '0')}`;
+    if (!(await tx.product.findUnique({ where: { sku }, select: { id: true } }))) return sku;
+  }
 }
 
 type ProductWithRels = Product & { category?: { name: string } | null; brand?: { name: string } | null; supplier?: { name: string } | null };
@@ -156,7 +165,7 @@ productsRouter.get(
     res.json({
       syncedAt: new Date().toISOString(),
       data: rows.map((p) => ({
-        id: p.id, sku: p.sku, barcode: p.barcode, name: p.name, brand: p.brand?.name, category: p.category.name, categoryId: p.categoryId,
+        id: p.id, sku: p.sku, barcode: p.barcode, name: p.name, brand: p.brand?.name, category: p.category?.name ?? null, categoryId: p.categoryId,
         compatibility: p.compatibility, color: p.color, connectorType: p.connectorType, sellingPrice: p.sellingPrice,
         minSellingPrice: p.minSellingPrice, qtyAvailable: p.qtyOnHand - p.qtyReserved, warrantyMonths: p.warrantyMonths, imageUrl: p.imageUrl,
       })),
@@ -181,7 +190,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 *
 /**
  * CSV import. Columns: sku,name,category,brand,barcode,compatibility,color,size,connectorType,
  * purchasePrice,sellingPrice,minSellingPrice,reorderLevel,warrantyMonths,openingStock.
- * Existing SKUs are updated (prices go through price history); new SKUs are created. All-or-nothing.
+ * Only name and sellingPrice are required. Existing SKUs are updated (prices go through price history);
+ * rows without a SKU get an automatic one. All-or-nothing.
  */
 productsRouter.post(
   '/import',
@@ -196,37 +206,38 @@ productsRouter.post(
     const parsed = rows.map((r, i) => {
       const n = (k: string) => (r[k] === undefined || r[k] === '' ? undefined : Number(r[k]));
       const cand = {
-        sku: r.sku, name: r.name, barcode: r.barcode || null, compatibility: r.compatibility || null, color: r.color || null,
+        sku: r.sku || null, name: r.name, barcode: r.barcode || null, compatibility: r.compatibility || null, color: r.color || null,
         size: r.size || null, connectorType: r.connectorType || null, purchasePrice: n('purchasePrice') ?? 0,
         sellingPrice: n('sellingPrice'), minSellingPrice: n('minSellingPrice') ?? n('sellingPrice'),
-        reorderLevel: n('reorderLevel') ?? 5, warrantyMonths: n('warrantyMonths') ?? 0, openingStock: n('openingStock') ?? 0, categoryId: 1,
+        reorderLevel: n('reorderLevel') ?? 5, warrantyMonths: n('warrantyMonths') ?? 0, openingStock: n('openingStock') ?? 0,
       };
       const v = productSchema.safeParse(cand);
       if (!v.success) errors.push({ row: i + 2, message: v.error.issues.map((x) => `${x.path.join('.')}: ${x.message}`).join('; ') });
-      if (!r.category) errors.push({ row: i + 2, message: 'category is required' });
       return { r, v: v.success ? v.data : null };
     });
     const skus = parsed.map((p) => p.r.sku?.toUpperCase());
-    skus.forEach((s, i) => { if (skus.indexOf(s) !== i) errors.push({ row: i + 2, message: `Duplicate SKU ${s} in file` }); });
+    skus.forEach((s, i) => { if (s && skus.indexOf(s) !== i) errors.push({ row: i + 2, message: `Duplicate SKU ${s} in file` }); });
     if (errors.length) return res.status(422).json({ error: { code: 'IMPORT_INVALID', message: `${errors.length} problem(s) found; nothing imported`, details: errors.slice(0, 100) } });
 
     let created = 0, updated = 0;
     await prisma.$transaction(async (tx) => {
       for (const { r, v } of parsed) {
-        const cat = await tx.category.upsert({ where: { name: r.category }, update: {}, create: { name: r.category } });
+        const cat = r.category ? await tx.category.upsert({ where: { name: r.category }, update: {}, create: { name: r.category } }) : null;
         const brand = r.brand ? await tx.brand.upsert({ where: { name: r.brand }, update: {}, create: { name: r.brand } }) : null;
-        const { openingStock, ...data } = v!;
-        const existing = await tx.product.findUnique({ where: { sku: data.sku } });
+        const { openingStock, sku: rawSku, minSellingPrice, ...rest } = v!;
+        const data = { ...rest, minSellingPrice: minSellingPrice ?? rest.sellingPrice };
+        const sku = rawSku ? rawSku.toUpperCase() : null;
+        const existing = sku ? await tx.product.findUnique({ where: { sku } }) : null;
         if (existing) {
           for (const f of ['sellingPrice', 'minSellingPrice'] as const) {
             if (toCents(existing[f]) !== toCents(data[f])) {
               await tx.priceHistory.create({ data: { productId: existing.id, field: f, oldValue: existing[f], newValue: String(data[f]), changedById: req.user!.id, reason: 'CSV import' } });
             }
           }
-          await tx.product.update({ where: { id: existing.id }, data: { ...data, categoryId: cat.id, brandId: brand?.id ?? null } });
+          await tx.product.update({ where: { id: existing.id }, data: { ...data, categoryId: cat?.id ?? null, brandId: brand?.id ?? null } });
           updated++;
         } else {
-          const p = await tx.product.create({ data: { ...data, categoryId: cat.id, brandId: brand?.id ?? null, avgCost: String(data.purchasePrice) } });
+          const p = await tx.product.create({ data: { ...data, sku: sku ?? (await generateSku(tx)), categoryId: cat?.id ?? null, brandId: brand?.id ?? null, avgCost: String(data.purchasePrice) } });
           if (openingStock > 0) {
             await applyMovement(tx, { productId: p.id, qtyChange: openingStock, type: 'OPENING', unitCost: data.purchasePrice, updateAverage: true, userId: req.user!.id, reason: 'CSV import' });
           }
@@ -295,9 +306,16 @@ productsRouter.post(
   '/',
   requirePerm('products.manage'),
   ah(async (req, res) => {
-    const { openingStock, ...data } = parse(productSchema, req.body);
+    const { openingStock, sku, minSellingPrice, ...data } = parse(productSchema, req.body);
     const p = await prisma.$transaction(async (tx) => {
-      const p = await tx.product.create({ data: { ...data, sku: data.sku.toUpperCase(), avgCost: String(data.purchasePrice) } });
+      const p = await tx.product.create({
+        data: {
+          ...data,
+          sku: sku ? sku.toUpperCase() : await generateSku(tx),
+          minSellingPrice: minSellingPrice ?? data.sellingPrice,
+          avgCost: String(data.purchasePrice),
+        },
+      });
       if (openingStock > 0) {
         await applyMovement(tx, { productId: p.id, qtyChange: openingStock, type: 'OPENING', unitCost: data.purchasePrice, updateAverage: true, userId: req.user!.id, reason: 'Opening stock' });
       }
@@ -316,8 +334,10 @@ productsRouter.put(
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) throw notFound('Product not found');
     const body = parse(productSchema.innerType().innerType().omit({ openingStock: true }).partial().extend({ priceChangeReason: z.string().max(200).optional(), approval: approvalSchema }), req.body);
-    const { priceChangeReason, approval, ...data } = body;
+    const { priceChangeReason, approval, sku, ...rest } = body;
+    const data = { ...rest, ...(sku ? { sku: sku.toUpperCase() } : {}) };
     const sell = data.sellingPrice ?? num(existing.sellingPrice);
+    if (data.minSellingPrice === null) data.minSellingPrice = sell; // cleared: no separate minimum
     const min = data.minSellingPrice ?? num(existing.minSellingPrice);
     if (min > sell) throw badRequest('Minimum price cannot exceed the selling price');
     if (data.barcode && !validBarcode(data.barcode)) throw badRequest('Barcode is not valid');
@@ -332,7 +352,7 @@ productsRouter.put(
       for (const f of priceFields) {
         await tx.priceHistory.create({ data: { productId: id, field: f, oldValue: existing[f], newValue: String(data[f]), changedById: req.user!.id, reason: priceChangeReason } });
       }
-      const p = await tx.product.update({ where: { id }, data: { ...data, sku: data.sku?.toUpperCase() }, include });
+      const p = await tx.product.update({ where: { id }, data: { ...data, minSellingPrice: data.minSellingPrice ?? undefined }, include });
       await audit(req, 'product.update', 'product', id, { changed: Object.keys(data), priceFields }, tx);
       return p;
     });

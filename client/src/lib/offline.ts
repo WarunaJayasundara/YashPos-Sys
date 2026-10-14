@@ -7,8 +7,8 @@ export interface CatalogItem {
   barcode: string | null;
   name: string;
   brand?: string;
-  category: string;
-  categoryId: number;
+  category: string | null;
+  categoryId: number | null;
   compatibility: string | null;
   color: string | null;
   connectorType: string | null;

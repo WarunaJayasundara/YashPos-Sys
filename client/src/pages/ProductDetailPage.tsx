@@ -38,7 +38,7 @@ export default function ProductDetailPage() {
     <div className="space-y-4">
       <PageHeader
         title={p.name}
-        subtitle={<>{p.sku}{p.barcode ? ` · ${p.barcode}` : ''} · {p.category}{p.brand ? ` · ${p.brand}` : ''} <Badge tone={STOCK_BADGE[p.stockStatus].tone} className="ml-1">{STOCK_BADGE[p.stockStatus].label}</Badge>{!p.isActive && <Badge className="ml-1">Inactive</Badge>}</>}
+        subtitle={<>{p.sku}{p.barcode ? ` · ${p.barcode}` : ''}{p.category ? ` · ${p.category}` : ''}{p.brand ? ` · ${p.brand}` : ''} <Badge tone={STOCK_BADGE[p.stockStatus].tone} className="ml-1">{STOCK_BADGE[p.stockStatus].label}</Badge>{!p.isActive && <Badge className="ml-1">Inactive</Badge>}</>}
         actions={<>
           {can('stock.adjust') && <Button variant="secondary" onClick={() => setAdjusting(true)}><PackageMinus className="h-4 w-4" />Adjust stock</Button>}
           {can('products.manage') && <Button onClick={() => setEditing(true)}><Pencil className="h-4 w-4" />Edit</Button>}

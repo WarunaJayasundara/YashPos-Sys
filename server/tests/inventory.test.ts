@@ -30,6 +30,31 @@ describe('products', () => {
     expect((await owner.post('/api/products').set(H).send({ ...base, sku: 'BC-2', barcode: '4006381333931' })).status).toBe(201);
   });
 
+  it('creates a product from just a name and a price (no category, brand or SKU)', async () => {
+    const owner = await login('owner', 'Owner@12345');
+    const r = await owner.post('/api/products').set(H).send({ name: 'Samsung 43 inch Smart TV', sellingPrice: 125000, openingStock: 2 });
+    expect(r.status).toBe(201);
+    expect(r.body.sku).toMatch(/^P-\d{5}$/);
+    expect(r.body.categoryId).toBeNull();
+    expect(r.body.brandId).toBeNull();
+    expect(r.body.minSellingPrice).toBe('125000');
+    expect(r.body.qtyOnHand).toBe(2);
+    const second = await owner.post('/api/products').set(H).send({ name: 'Another item', sellingPrice: 100 });
+    expect(second.body.sku).not.toBe(r.body.sku);
+
+    // sellable, and reported under "No category"
+    const { uid } = await import('./helpers.js');
+    const sale = await owner.post('/api/sales').set(H).send({ clientRequestId: uid(), items: [{ productId: r.body.id, qty: 1 }], payments: [{ method: 'CASH', amount: 125000 }] });
+    expect(sale.status).toBe(201);
+    const { localToday } = await import('../src/db.js');
+    const rep = (await owner.get('/api/reports/sales-by-category').query({ from: localToday(), to: localToday() })).body;
+    expect(rep.rows.map((x: { label: string }) => x.label)).toContain('No category');
+    const inv = (await owner.get('/api/reports/inventory-valuation')).body;
+    expect(inv.rows.find((x: { name: string }) => x.name === 'Samsung 43 inch Smart TV')?.category).toBe('No category');
+    const cat = (await owner.get('/api/products/catalog')).body.data.find((x: { id: number }) => x.id === r.body.id);
+    expect(cat.category).toBeNull();
+  });
+
   it('validates EAN-13 check digits', () => {
     expect(validBarcode('4006381333931')).toBe(true);
     expect(validBarcode('4006381333932')).toBe(false);

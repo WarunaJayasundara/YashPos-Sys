@@ -99,7 +99,7 @@ export default function ProductsPage() {
               )}
               columns={[
                 { key: 'name', header: 'Product', primary: true, render: (p) => <div className="flex items-center gap-3"><Avatar name={p.name} src={p.imageUrl} className="h-9 w-9 shrink-0 rounded-lg text-xs" /><div className="min-w-0"><span className="font-medium text-slate-900">{p.name}</span>{!p.isActive && <Badge className="ml-2">Inactive</Badge>}<div className="text-xs font-normal text-slate-500">{p.sku}{p.compatibility ? ` · ${p.compatibility}` : ''}</div></div></div> },
-                { key: 'cat', header: 'Category', render: (p) => p.category, hideMobile: true },
+                { key: 'cat', header: 'Category', render: (p) => p.category ?? <span className="text-slate-400">No category</span>, hideMobile: true },
                 { key: 'brand', header: 'Brand', render: (p) => p.brand ?? '-', hideMobile: true },
                 ...(showCost ? [{ key: 'cost', header: 'Avg cost', num: true, render: (p: Product) => money(p.avgCost) }] : []),
                 { key: 'price', header: 'Selling', num: true, render: (p) => money(p.sellingPrice) },
@@ -150,7 +150,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
   return (
     <Modal open={open} onClose={onClose} title="Import products from CSV" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} disabled={!file} onClick={submit}>Import</Button></>}>
       <div className="space-y-3 text-sm">
-        <p>Rows with an existing SKU update that product (price changes go into price history). New SKUs are created with their opening stock. If any row is invalid, nothing is imported.</p>
+        <p>Only <b>name</b> and <b>sellingPrice</b> are required; every other column can be left empty. Rows with an existing SKU update that product (price changes go into price history). Rows without a SKU get one automatically. If any row is invalid, nothing is imported.</p>
         <a className="link" href={`data:text/csv;charset=utf-8,${encodeURIComponent(template)}`} download="products-template.csv">Download template</a>
         <input type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="CSV file" />
         {error && <p className="text-red-700">{error}</p>}

@@ -122,8 +122,8 @@ model Product {
   barcode           String?         @unique @db.VarChar(40)
   name              String          @db.VarChar(160)
   description       String?         @db.Text
-  categoryId        Int
-  category          Category        @relation(fields: [categoryId], references: [id])
+  categoryId        Int?
+  category          Category?       @relation(fields: [categoryId], references: [id])
   brandId           Int?
   brand             Brand?          @relation(fields: [brandId], references: [id])
   supplierId        Int?

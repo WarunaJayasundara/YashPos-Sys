@@ -45,7 +45,7 @@ async function productLines(f: F, groupBy: 'product' | 'category' | 'brand') {
   const key = { product: Prisma.raw('p.id'), category: Prisma.raw('p.categoryId'), brand: Prisma.raw('p.brandId') }[groupBy];
   const label = {
     product: Prisma.raw(`CONCAT(p.name, ' (', p.sku, ')')`),
-    category: Prisma.raw('(SELECT name FROM categories c WHERE c.id = p.categoryId)'),
+    category: Prisma.raw("COALESCE((SELECT name FROM categories c WHERE c.id = p.categoryId), 'No category')"),
     brand: Prisma.raw(`COALESCE((SELECT name FROM brands b WHERE b.id = p.brandId), 'No brand')`),
   }[groupBy];
   const sold = await prisma.$queryRaw<{ k: number | null; label: string; qty: unknown; gross: unknown; disc: unknown; net: unknown; cogs: unknown }[]>`
@@ -218,9 +218,9 @@ export const REPORTS: Record<string, Def> = {
     run: async (f, req) => {
       const fin = can(req, 'reports.financial');
       const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-        SELECT p.sku, p.name, c.name category, COALESCE(b.name, '') brand, p.qtyOnHand, p.reorderLevel, p.avgCost, p.sellingPrice,
+        SELECT p.sku, p.name, COALESCE(c.name, 'No category') category, COALESCE(b.name, '') brand, p.qtyOnHand, p.reorderLevel, p.avgCost, p.sellingPrice,
           p.qtyOnHand * p.avgCost costValue, p.qtyOnHand * p.sellingPrice retailValue
-        FROM products p JOIN categories c ON c.id = p.categoryId LEFT JOIN brands b ON b.id = p.brandId
+        FROM products p LEFT JOIN categories c ON c.id = p.categoryId LEFT JOIN brands b ON b.id = p.brandId
         WHERE p.isActive = 1 ${f.categoryId ? Prisma.sql`AND p.categoryId = ${f.categoryId}` : EMPTY} ${f.brandId ? Prisma.sql`AND p.brandId = ${f.brandId}` : EMPTY}
         ORDER BY c.name, p.name`;
       const out = rows.map((r) => ({
@@ -236,10 +236,10 @@ export const REPORTS: Record<string, Def> = {
     title: 'Low and out of stock', perm: 'reports.inventory',
     run: async () => {
       const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-        SELECT p.sku, p.name, c.name category, p.qtyOnHand - p.qtyReserved available, p.reorderLevel,
+        SELECT p.sku, p.name, COALESCE(c.name, 'No category') category, p.qtyOnHand - p.qtyReserved available, p.reorderLevel,
           CASE WHEN p.qtyOnHand - p.qtyReserved <= 0 THEN 'OUT' ELSE 'LOW' END status,
           (SELECT name FROM suppliers s WHERE s.id = p.supplierId) supplier
-        FROM products p JOIN categories c ON c.id = p.categoryId
+        FROM products p LEFT JOIN categories c ON c.id = p.categoryId
         WHERE p.isActive = 1 AND p.qtyOnHand - p.qtyReserved <= p.reorderLevel ORDER BY available, p.name`;
       return { columns: [{ key: 'status', label: 'Status' }, { key: 'sku', label: 'SKU' }, { key: 'name', label: 'Product' }, { key: 'category', label: 'Category' }, { key: 'available', label: 'Available' }, { key: 'reorderLevel', label: 'Reorder level' }, { key: 'supplier', label: 'Supplier' }], rows: rows.map((r) => ({ ...r, available: n(r.available), reorderLevel: n(r.reorderLevel) })) };
     },

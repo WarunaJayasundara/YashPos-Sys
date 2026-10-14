@@ -12,6 +12,7 @@ import { money, toNum, uuid, METHOD_LABEL } from '../lib/format';
 import type { Sale, Settings } from '../lib/types';
 import { useOnline } from '../lib/useOnline';
 import { Avatar, Button, Input, Modal } from '../components/ui';
+import { ProductForm } from '../components/ProductForm';
 import { useApproval } from '../components/Approval';
 import { useToast } from '../components/toast';
 
@@ -64,6 +65,7 @@ export default function PosPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [done, setDone] = useState<Sale | null>(null);
   const [savedOffline, setSavedOffline] = useState<string | null>(null);
+  const [quickAdd, setQuickAdd] = useState<string | null>(null);
   const requestId = useRef(uuid());
 
   const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<Settings>('/settings'), staleTime: 300_000 });
@@ -80,16 +82,17 @@ export default function PosPage() {
   const categories = useMemo(() => {
     const m = new Map<number, { id: number; name: string; count: number }>();
     for (const p of catalog) {
-      const c = m.get(p.categoryId) ?? { id: p.categoryId, name: p.category, count: 0 };
+      const key = p.categoryId ?? 0; // 0 = items with no category
+      const c = m.get(key) ?? { id: key, name: p.category ?? 'Other', count: 0 };
       c.count++;
-      m.set(p.categoryId, c);
+      m.set(key, c);
     }
-    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...m.values()].sort((a, b) => Number(a.id === 0) - Number(b.id === 0) || a.name.localeCompare(b.name));
   }, [catalog]);
 
   const visible = useMemo(() => {
     const base = term.trim() ? matchProducts(catalog, term) : [...catalog].sort((a, b) => Number(b.qtyAvailable > 0) - Number(a.qtyAvailable > 0) || a.name.localeCompare(b.name));
-    return category ? base.filter((p) => p.categoryId === category) : base;
+    return category !== null ? base.filter((p) => (p.categoryId ?? 0) === category) : base;
   }, [catalog, term, category]);
   useEffect(() => setActive(0), [term, category]);
 
@@ -381,6 +384,9 @@ export default function PosPage() {
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-200/60 text-slate-400"><Search className="h-7 w-7" /></span>
               <p className="font-semibold text-slate-700">{catalog.length ? `Nothing matches "${term}"` : 'No products yet'}</p>
               <p className="text-sm text-slate-500">{catalog.length ? 'Try a shorter search or another category.' : 'Add products first, then they appear here.'}</p>
+              {can('products.manage') && online && (
+                <Button className="mt-3" onClick={() => setQuickAdd(term.trim() || ' ')}><Plus className="h-4 w-4" />{term.trim() ? `Add "${term.trim()}" as a new product` : 'Add a product'}</Button>
+              )}
             </div>
           )}
         </div>
@@ -406,6 +412,23 @@ export default function PosPage() {
       )}
 
       <PaymentModal open={payOpen} total={total} onClose={() => setPayOpen(false)} onPay={checkout} hasCustomer={!!customer.phone} online={online} />
+
+      <Modal open={quickAdd !== null} onClose={() => setQuickAdd(null)} title="New product" wide>
+        {quickAdd !== null && (
+          <ProductForm
+            initialName={quickAdd.trim()}
+            onCancel={() => setQuickAdd(null)}
+            onSaved={async (p) => {
+              setQuickAdd(null);
+              setTerm('');
+              await loadCatalog(true);
+              const item = (await getCatalog()).find((c) => c.id === p.id);
+              if (item && item.qtyAvailable > 0) add(item);
+              else if (item) toast('Product added. It has no stock yet, so it was not put on the bill.', 'info');
+            }}
+          />
+        )}
+      </Modal>
 
       <Modal open={!!done} onClose={() => setDone(null)} title="Sale completed">
         {done && (

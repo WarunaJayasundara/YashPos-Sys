@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma, dateRange } from '../db.js';
-import { ah, parse, badRequest, conflict, notFound } from '../lib/http.js';
+import { ah, parse, badRequest, conflict, notFound, idParam } from '../lib/http.js';
 import { requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { fromCents, toCents } from '../lib/money.js';
@@ -31,7 +31,7 @@ purchasesRouter.get('/', requirePerm('purchases.view'), ah(async (req, res) => {
 }));
 
 purchasesRouter.get('/:id', requirePerm('purchases.view'), ah(async (req, res) => {
-  const p = await prisma.purchaseOrder.findUnique({ where: { id: Number(req.params.id) }, include: purchaseInclude });
+  const p = await prisma.purchaseOrder.findUnique({ where: { id: idParam(req) }, include: purchaseInclude });
   if (!p) throw notFound('Purchase not found');
   res.json({ ...p, balance: fromCents(toCents(p.invoiceTotal) - toCents(p.amountPaid)) });
 }));
@@ -41,19 +41,19 @@ purchasesRouter.post('/', requirePerm('purchases.manage'), ah(async (req, res) =
 }));
 
 purchasesRouter.post('/:id/order', requirePerm('purchases.manage'), ah(async (req, res) => {
-  const r = await prisma.purchaseOrder.updateMany({ where: { id: Number(req.params.id), status: 'DRAFT' }, data: { status: 'ORDERED' } });
+  const r = await prisma.purchaseOrder.updateMany({ where: { id: idParam(req), status: 'DRAFT' }, data: { status: 'ORDERED' } });
   if (!r.count) throw conflict('Only draft purchases can be marked as ordered');
   await audit(req, 'purchase.order', 'purchase', req.params.id);
   res.json({ ok: true });
 }));
 
 purchasesRouter.post('/:id/receive', requirePerm('purchases.manage'), ah(async (req, res) => {
-  res.json(await receiveGoods(req, Number(req.params.id), parse(receiveInputSchema, req.body)));
+  res.json(await receiveGoods(req, idParam(req), parse(receiveInputSchema, req.body)));
 }));
 
 purchasesRouter.put('/:id/invoice', requirePerm('purchases.manage'), ah(async (req, res) => {
   const body = parse(z.object({ supplierInvoiceNo: z.string().max(60).optional(), invoiceTotal: z.coerce.number().min(0).optional(), notes: z.string().max(2000).optional() }), req.body);
-  const po = await prisma.purchaseOrder.findUnique({ where: { id: Number(req.params.id) } });
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: idParam(req) } });
   if (!po) throw notFound();
   if (body.invoiceTotal !== undefined && toCents(body.invoiceTotal) < toCents(po.amountPaid)) throw badRequest('Invoice total cannot be less than the amount already paid');
   const updated = await prisma.purchaseOrder.update({
@@ -65,7 +65,7 @@ purchasesRouter.put('/:id/invoice', requirePerm('purchases.manage'), ah(async (r
 }));
 
 purchasesRouter.post('/:id/cancel', requirePerm('purchases.manage'), ah(async (req, res) => {
-  const po = await prisma.purchaseOrder.findUnique({ where: { id: Number(req.params.id) }, include: { receipts: true, payments: true } });
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: idParam(req) }, include: { receipts: true, payments: true } });
   if (!po) throw notFound();
   if (po.receipts.length || po.payments.length) throw conflict('Purchases with receipts or payments cannot be cancelled');
   await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'CANCELLED' } });
@@ -78,7 +78,7 @@ purchasesRouter.post('/:id/payments', requirePerm('purchases.pay'), ah(async (re
     amount: z.coerce.number().positive(), method: z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'QR']), reference: z.string().max(80).optional(),
     paidAt: z.string().datetime().optional(),
   }), req.body);
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const result = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ invoiceTotal: string; amountPaid: string; supplierId: number; status: string }[]>`
       SELECT invoiceTotal, amountPaid, supplierId, status FROM purchase_orders WHERE id = ${id} FOR UPDATE`;

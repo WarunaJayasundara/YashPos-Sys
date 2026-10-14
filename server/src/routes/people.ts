@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma, dateRange } from '../db.js';
-import { ah, parse, badRequest, notFound, conflict } from '../lib/http.js';
+import { ah, parse, badRequest, notFound, conflict, idParam } from '../lib/http.js';
 import { hashPassword, requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { fromCents, toCents } from '../lib/money.js';
@@ -40,7 +40,7 @@ customersRouter.get('/', requirePerm('customers.view'), ah(async (req, res) => {
 }));
 
 customersRouter.get('/:id', requirePerm('customers.view'), ah(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const c = await prisma.customer.findUnique({
     where: { id },
     include: {
@@ -59,13 +59,13 @@ customersRouter.post('/', requirePerm('customers.manage'), ah(async (req, res) =
 }));
 
 customersRouter.put('/:id', requirePerm('customers.manage'), ah(async (req, res) => {
-  const c = await prisma.customer.update({ where: { id: Number(req.params.id) }, data: parse(customerSchema.partial(), req.body) });
+  const c = await prisma.customer.update({ where: { id: idParam(req) }, data: parse(customerSchema.partial(), req.body) });
   await audit(req, 'customer.update', 'customer', c.id);
   res.json(c);
 }));
 
 customersRouter.post('/:id/payments', requirePerm('customers.manage'), ah(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const body = parse(z.object({ amount: z.coerce.number().positive(), method: z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'QR']), reference: z.string().max(80).optional() }), req.body);
   const bal = toCents(await customerBalance(id));
   if (toCents(body.amount) > bal) throw badRequest(`Payment exceeds the outstanding balance of ${fromCents(bal)}`);
@@ -96,7 +96,7 @@ warrantiesRouter.put('/:id', requirePerm('warranty.manage'), ah(async (req, res)
     claimStatus: z.enum(['NONE', 'OPEN', 'IN_REPAIR', 'REPLACED', 'REJECTED', 'CLOSED']).optional(),
     claimNotes: z.string().max(5000).optional(), resolution: z.string().max(5000).optional(), serialNumber: z.string().max(80).optional(),
   }), req.body);
-  const w = await prisma.warranty.update({ where: { id: Number(req.params.id) }, data: body });
+  const w = await prisma.warranty.update({ where: { id: idParam(req) }, data: body });
   await audit(req, 'warranty.update', 'warranty', w.id, body);
   res.json(w);
 }));
@@ -130,7 +130,7 @@ usersRouter.post('/', requirePerm('users.manage'), ah(async (req, res) => {
 }));
 
 usersRouter.put('/:id', requirePerm('users.manage'), ah(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const { password, ...data } = parse(userSchema.partial(), req.body);
   if (id === req.user!.id && (data.isActive === false || data.roleId !== undefined)) throw badRequest('You cannot deactivate or change the role of your own account');
   const u = await prisma.user.update({
@@ -177,7 +177,7 @@ rolesRouter.post('/', requirePerm('users.manage'), ah(async (req, res) => {
 }));
 
 rolesRouter.put('/:id', requirePerm('users.manage'), ah(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const role = await prisma.role.findUnique({ where: { id } });
   if (!role) throw notFound();
   const { permissions, ...data } = parse(roleSchema.partial(), req.body);

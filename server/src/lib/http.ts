@@ -55,3 +55,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   console.error(err);
   return res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Unexpected server error' } });
 }
+
+/** Route id as a positive integer; anything else (abc, 1.5, -1) is treated as not found. */
+export function idParam(req: Request, name = 'id'): number {
+  const raw = req.params[name];
+  if (!/^[1-9]\d{0,9}$/.test(raw ?? '')) throw notFound();
+  return Number(raw);
+}

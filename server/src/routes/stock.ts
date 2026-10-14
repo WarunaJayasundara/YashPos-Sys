@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Prisma, type StockAdjustment } from '@prisma/client';
 import { prisma, dateRange } from '../db.js';
-import { ah, parse, badRequest, conflict, notFound } from '../lib/http.js';
+import { ah, parse, badRequest, conflict, notFound, idParam } from '../lib/http.js';
 import { can, requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { applyMovement } from '../services/inventory.js';
@@ -70,7 +70,7 @@ stockRouter.post('/adjustments', requirePerm('stock.adjust'), ah(async (req, res
 
 stockRouter.post('/adjustments/:id/decide', requirePerm('stock.approve'), ah(async (req, res) => {
   const { approve } = parse(z.object({ approve: z.boolean() }), req.body);
-  const a = await prisma.stockAdjustment.findUnique({ where: { id: Number(req.params.id) } });
+  const a = await prisma.stockAdjustment.findUnique({ where: { id: idParam(req) } });
   if (!a) throw notFound();
   if (a.status !== 'PENDING') throw conflict('Adjustment was already decided');
   if (approve) await apply(req, a, req.user!.id);

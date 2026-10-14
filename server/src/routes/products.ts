@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { Prisma, type Product } from '@prisma/client';
 import { prisma, nextSequence, type Tx } from '../db.js';
-import { ah, parse, badRequest, notFound } from '../lib/http.js';
+import { ah, parse, badRequest, notFound, idParam } from '../lib/http.js';
 import { can, requirePerm, resolveApproval } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { toCents, fromCents, num } from '../lib/money.js';
@@ -273,7 +273,7 @@ productsRouter.get(
   '/:id',
   requirePerm('products.view'),
   ah(async (req, res) => {
-    const id = Number(req.params.id);
+    const id = idParam(req);
     const p = await prisma.product.findUnique({ where: { id }, include });
     if (!p) throw notFound('Product not found');
     const out: Record<string, unknown> = { ...presentProduct(req, p) };
@@ -330,7 +330,7 @@ productsRouter.put(
   '/:id',
   requirePerm('products.manage'),
   ah(async (req, res) => {
-    const id = Number(req.params.id);
+    const id = idParam(req);
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) throw notFound('Product not found');
     const body = parse(productSchema.innerType().innerType().omit({ openingStock: true }).partial().extend({ priceChangeReason: z.string().max(200).optional(), approval: approvalSchema }), req.body);
@@ -364,7 +364,7 @@ productsRouter.get(
   '/:id/movements',
   requirePerm('stock.view'),
   ah(async (req, res) => {
-    const rows = await prisma.stockMovement.findMany({ where: { productId: Number(req.params.id) }, orderBy: { id: 'desc' }, take: 200 });
+    const rows = await prisma.stockMovement.findMany({ where: { productId: idParam(req) }, orderBy: { id: 'desc' }, take: 200 });
     res.json(rows.map((m) => (can(req, 'products.view_cost') ? m : { ...m, unitCost: undefined })));
   }),
 );

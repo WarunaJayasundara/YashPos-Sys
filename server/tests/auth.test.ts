@@ -27,6 +27,8 @@ describe('authentication', () => {
       expect(r.status, url).toBeLessThan(500);
     }
     expect((await owner.get('/api/sales/999999')).status).toBe(404);
+    expect((await owner.get('/api/purchases/1.5')).status).toBe(404);
+    expect((await owner.get('/api/products/0')).status).toBe(404);
     expect((await owner.get('/api/nope')).status).toBe(404);
   });
 

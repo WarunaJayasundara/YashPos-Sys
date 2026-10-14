@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma, dateRange, getSettings } from '../db.js';
-import { ah, parse, forbidden, notFound } from '../lib/http.js';
+import { ah, parse, forbidden, notFound, idParam } from '../lib/http.js';
 import { can, requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { createSale, saleInclude, saleInputSchema, voidSale, approvalSchema } from '../services/sales.js';
@@ -65,19 +65,19 @@ salesRouter.get('/', requirePerm('sales.view_own', 'sales.view_all'), ah(async (
 }));
 
 salesRouter.get('/:id', requirePerm('sales.view_own', 'sales.view_all'), ah(async (req, res) => {
-  res.json(presentSale(req, await loadVisibleSale(req, Number(req.params.id))));
+  res.json(presentSale(req, await loadVisibleSale(req, idParam(req))));
 }));
 
 /** Data for the printable receipt (thermal or A4). Always the stored snapshot, never current prices. */
 salesRouter.get('/:id/receipt', requirePerm('sales.view_own', 'sales.view_all', 'sales.create'), ah(async (req, res) => {
-  const s = await loadVisibleSale(req, Number(req.params.id));
+  const s = await loadVisibleSale(req, idParam(req));
   const settings = await getSettings();
   const out = presentSale(req, s);
   res.json({ sale: { ...out, totalCost: undefined, items: out.items.map((i) => ({ ...i, unitCost: undefined })) }, settings });
 }));
 
 salesRouter.get('/:id/invoice.pdf', requirePerm('sales.view_own', 'sales.view_all'), ah(async (req, res) => {
-  const s = await loadVisibleSale(req, Number(req.params.id));
+  const s = await loadVisibleSale(req, idParam(req));
   const settings = await getSettings();
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${s.invoiceNumber}.pdf"`);
@@ -86,14 +86,14 @@ salesRouter.get('/:id/invoice.pdf', requirePerm('sales.view_own', 'sales.view_al
 }));
 
 salesRouter.post('/:id/reprint', requirePerm('sales.view_own', 'sales.view_all'), ah(async (req, res) => {
-  const s = await loadVisibleSale(req, Number(req.params.id));
+  const s = await loadVisibleSale(req, idParam(req));
   await audit(req, 'sale.reprint', 'sale', s.id, { invoiceNumber: s.invoiceNumber });
   res.json({ ok: true });
 }));
 
 salesRouter.post('/:id/void', requirePerm('sales.create', 'sales.void'), ah(async (req, res) => {
   const body = parse(z.object({ reason: z.string().trim().min(3).max(255), approval: approvalSchema }), req.body);
-  const s = await loadVisibleSale(req, Number(req.params.id));
+  const s = await loadVisibleSale(req, idParam(req));
   res.json(presentSale(req, await voidSale(req, s.id, body.reason, body.approval)));
 }));
 

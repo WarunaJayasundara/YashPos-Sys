@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma, dateRange, localToday, getSettings } from '../db.js';
-import { ah, parse, conflict } from '../lib/http.js';
+import { ah, parse, conflict, idParam } from '../lib/http.js';
 import { requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { fromCents, toCents } from '../lib/money.js';
@@ -58,7 +58,7 @@ expensesRouter.post('/', requirePerm('expenses.manage'), attachment.single('atta
 }));
 
 expensesRouter.delete('/:id', requirePerm('expenses.manage'), ah(async (req, res) => {
-  const e = await prisma.expense.findUniqueOrThrow({ where: { id: Number(req.params.id) } });
+  const e = await prisma.expense.findUniqueOrThrow({ where: { id: idParam(req) } });
   const closed = await prisma.cashClosing.findUnique({ where: { businessDate: e.expenseDate } });
   if (closed && e.paidFromDrawer) throw conflict('That day is already closed; record a correcting entry instead');
   await prisma.expense.delete({ where: { id: e.id } });

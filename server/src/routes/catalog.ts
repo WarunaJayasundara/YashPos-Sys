@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { ah, parse, notFound } from '../lib/http.js';
+import { ah, parse, notFound, idParam } from '../lib/http.js';
 import { requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 
@@ -25,7 +25,7 @@ function lookupRouter(model: 'category' | 'brand') {
     res.status(201).json(row);
   }));
   r.put('/:id', requirePerm('catalog.manage'), ah(async (req, res) => {
-    const id = Number(req.params.id);
+    const id = idParam(req);
     if (!(await delegate().findUnique({ where: { id } }))) throw notFound();
     const row = await delegate().update({ where: { id }, data: parse(schema.partial(), req.body) });
     await audit(req, `${model}.update`, model, id, req.body);
@@ -65,7 +65,7 @@ suppliersRouter.get('/', requirePerm('purchases.view', 'suppliers.manage'), ah(a
 }));
 
 suppliersRouter.get('/:id', requirePerm('purchases.view', 'suppliers.manage'), ah(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = idParam(req);
   const s = await prisma.supplier.findUnique({
     where: { id },
     include: {
@@ -88,7 +88,7 @@ suppliersRouter.post('/', requirePerm('suppliers.manage'), ah(async (req, res) =
 }));
 
 suppliersRouter.put('/:id', requirePerm('suppliers.manage'), ah(async (req, res) => {
-  const s = await prisma.supplier.update({ where: { id: Number(req.params.id) }, data: parse(supplierSchema.partial(), req.body) });
+  const s = await prisma.supplier.update({ where: { id: idParam(req) }, data: parse(supplierSchema.partial(), req.body) });
   await audit(req, 'supplier.update', 'supplier', s.id, req.body);
   res.json(s);
 }));

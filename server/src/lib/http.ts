@@ -45,6 +45,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     if (err.code === 'P2025') return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Record not found' } });
     if (err.code === 'P2003') return res.status(409).json({ error: { code: 'IN_USE', message: 'Record is referenced by other data' } });
   }
+  // e.g. a non-numeric id in the URL (/api/sales/abc): the request is wrong, not the server
+  if (err instanceof Prisma.PrismaClientValidationError) {
+    return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid request' } });
+  }
   if ((err as { type?: string })?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { code: 'BAD_JSON', message: 'Malformed JSON body' } });
   }

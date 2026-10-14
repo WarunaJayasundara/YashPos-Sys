@@ -1,0 +1,29 @@
+# Render Blueprint: one free web service that serves the API and the PWA.
+# The MySQL database lives elsewhere (e.g. Aiven free MySQL); see docs/FREE_HOSTING.md.
+services:
+  - type: web
+    name: yash-pos
+    runtime: node
+    plan: free
+    # migrations and the (idempotent) owner/roles seed run on every deploy
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate && npm run db:seed
+    startCommand: npm start -w server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SEED_DEMO
+        value: "0"
+      - key: SESSION_TTL_HOURS
+        value: "12"
+      # set these two in the Render dashboard (never commit them)
+      - key: DATABASE_URL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false

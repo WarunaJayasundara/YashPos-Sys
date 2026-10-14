@@ -2,7 +2,10 @@
   "name": "yash-mobile-pos",
   "private": true,
   "version": "1.0.0",
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
@@ -10,5 +13,8 @@
     "test": "npm run test -w server && npm run test -w client",
     "db:migrate": "npm run db:migrate -w server",
     "db:seed": "npm run db:seed -w server"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -19,6 +19,17 @@ describe('authentication', () => {
     expect(cookie).toMatch(/SameSite=Strict/i);
   });
 
+  it('answers malformed ids and unknown records with 4xx, never 500', async () => {
+    const owner = await login('owner', 'Owner@12345');
+    for (const url of ['/api/sales/abc', '/api/products/xyz', '/api/purchases/1.5', '/api/sales/abc/invoice.pdf', '/api/customers/-']) {
+      const r = await owner.get(url);
+      expect(r.status, url).toBeGreaterThanOrEqual(400);
+      expect(r.status, url).toBeLessThan(500);
+    }
+    expect((await owner.get('/api/sales/999999')).status).toBe(404);
+    expect((await owner.get('/api/nope')).status).toBe(404);
+  });
+
   it('requires a session for API routes', async () => {
     expect((await request(app).get('/api/products')).status).toBe(401);
   });

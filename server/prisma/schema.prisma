@@ -1,0 +1,591 @@
+// YASH MOBILE POS - database schema (MySQL / MariaDB)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Access control ----------
+
+model Role {
+  id                 Int              @id @default(autoincrement())
+  code               String           @unique @db.VarChar(40)
+  name               String           @db.VarChar(80)
+  maxDiscountPercent Decimal          @default(0) @db.Decimal(5, 2)
+  isSystem           Boolean          @default(false)
+  permissions        RolePermission[]
+  users              User[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  code        String           @unique @db.VarChar(60)
+  description String           @db.VarChar(200)
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)
+  fullName     String    @db.VarChar(120)
+  passwordHash String    @db.VarChar(100)
+  roleId       Int
+  role         Role      @relation(fields: [roleId], references: [id])
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @db.VarChar(64) // sha256 of the cookie token
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  userAgent  String?  @db.VarChar(255)
+  ip         String?  @db.VarChar(64)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ---------- Catalogue ----------
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(80)
+  isActive  Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+
+  @@map("categories")
+}
+
+model Brand {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(80)
+  isActive  Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+
+  @@map("brands")
+}
+
+model Supplier {
+  id            Int               @id @default(autoincrement())
+  name          String            @db.VarChar(120)
+  contactPerson String?           @db.VarChar(120)
+  phone         String?           @db.VarChar(30)
+  email         String?           @db.VarChar(120)
+  address       String?           @db.VarChar(255)
+  businessRegNo String?           @db.VarChar(60)
+  notes         String?           @db.Text
+  isActive      Boolean           @default(true)
+  products      Product[]
+  purchases     PurchaseOrder[]
+  payments      SupplierPayment[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@map("suppliers")
+}
+
+// One row per sellable SKU. Variants (colour, size, connector) are separate SKUs
+// grouped by variantGroup, so stock is always tracked at the level that is sold.
+model Product {
+  id                Int             @id @default(autoincrement())
+  sku               String          @unique @db.VarChar(40)
+  barcode           String?         @unique @db.VarChar(40)
+  name              String          @db.VarChar(160)
+  description       String?         @db.Text
+  categoryId        Int
+  category          Category        @relation(fields: [categoryId], references: [id])
+  brandId           Int?
+  brand             Brand?          @relation(fields: [brandId], references: [id])
+  supplierId        Int?
+  supplier          Supplier?       @relation(fields: [supplierId], references: [id])
+  variantGroup      String?         @db.VarChar(60)
+  compatibility     String?         @db.VarChar(255)
+  color             String?         @db.VarChar(40)
+  size              String?         @db.VarChar(40)
+  connectorType     String?         @db.VarChar(40)
+  purchasePrice     Decimal         @default(0) @db.Decimal(12, 2) // last supplier price
+  avgCost           Decimal         @default(0) @db.Decimal(12, 4) // weighted average cost
+  sellingPrice      Decimal         @db.Decimal(12, 2)
+  minSellingPrice   Decimal         @db.Decimal(12, 2)
+  qtyOnHand         Int             @default(0)
+  qtyReserved       Int             @default(0)
+  reorderLevel      Int             @default(5)
+  maxStockLevel     Int?
+  warrantyMonths    Int             @default(0)
+  imageUrl          String?         @db.VarChar(255)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  saleItems         SaleItem[]
+  purchaseItems     PurchaseItem[]
+  movements         StockMovement[]
+  priceHistory      PriceHistory[]
+  adjustments       StockAdjustment[]
+  warranties        Warranty[]
+
+  @@index([name])
+  @@index([variantGroup])
+  @@map("products")
+}
+
+model PriceHistory {
+  id                 Int      @id @default(autoincrement())
+  productId          Int
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  field              String   @db.VarChar(30) // sellingPrice | minSellingPrice | purchasePrice
+  oldValue           Decimal  @db.Decimal(12, 2)
+  newValue           Decimal  @db.Decimal(12, 2)
+  changedById        Int?
+  reason             String?  @db.VarChar(200)
+  createdAt          DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@map("price_history")
+}
+
+// ---------- Purchasing ----------
+
+enum PurchaseStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id                Int               @id @default(autoincrement())
+  poNumber          String            @unique @db.VarChar(30)
+  supplierId        Int
+  supplier          Supplier          @relation(fields: [supplierId], references: [id])
+  status            PurchaseStatus    @default(ORDERED)
+  supplierInvoiceNo String?           @db.VarChar(60)
+  purchaseDate      DateTime
+  notes             String?           @db.Text
+  invoiceTotal      Decimal           @default(0) @db.Decimal(12, 2) // supplier's invoice total
+  amountPaid        Decimal           @default(0) @db.Decimal(12, 2)
+  createdById       Int
+  items             PurchaseItem[]
+  receipts          GoodsReceipt[]
+  payments          SupplierPayment[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([supplierId])
+  @@index([purchaseDate])
+  @@map("purchase_orders")
+}
+
+model PurchaseItem {
+  id              Int                @id @default(autoincrement())
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       Int
+  product         Product            @relation(fields: [productId], references: [id])
+  qtyOrdered      Int
+  qtyReceived     Int                @default(0) // accepted into stock
+  qtyDamaged      Int                @default(0)
+  qtyMissing      Int                @default(0)
+  unitCost        Decimal            @db.Decimal(12, 2)
+  receiptItems    GoodsReceiptItem[]
+
+  @@map("purchase_items")
+}
+
+model GoodsReceipt {
+  id              Int                @id @default(autoincrement())
+  receiptNumber   String             @unique @db.VarChar(30)
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  receivedAt      DateTime           @default(now())
+  additionalCost  Decimal            @default(0) @db.Decimal(12, 2) // freight etc, allocated to accepted units by value
+  notes           String?            @db.Text
+  receivedById    Int
+  items           GoodsReceiptItem[]
+
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id             Int          @id @default(autoincrement())
+  goodsReceiptId Int
+  goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseItemId Int
+  purchaseItem   PurchaseItem @relation(fields: [purchaseItemId], references: [id])
+  qtyReceived    Int // physically delivered in this receipt
+  qtyDamaged     Int @default(0)
+  qtyMissing     Int @default(0) // short against the delivery note
+  qtyAccepted    Int // received - damaged; added to saleable stock
+  landedUnitCost Decimal @db.Decimal(12, 4)
+
+  @@map("goods_receipt_items")
+}
+
+model SupplierPayment {
+  id              Int            @id @default(autoincrement())
+  supplierId      Int
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseOrderId Int?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  amount          Decimal        @db.Decimal(12, 2)
+  method          PaymentMethod
+  reference       String?        @db.VarChar(80)
+  paidAt          DateTime       @default(now())
+  recordedById    Int
+
+  @@map("supplier_payments")
+}
+
+// ---------- Sales ----------
+
+enum SaleStatus {
+  COMPLETED
+  PARTIALLY_RETURNED
+  RETURNED
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  QR
+  CREDIT
+}
+
+model Customer {
+  id        Int               @id @default(autoincrement())
+  name      String            @db.VarChar(120)
+  phone     String?           @unique @db.VarChar(30)
+  email     String?           @db.VarChar(120)
+  notes     String?           @db.VarChar(255)
+  sales     Sale[]
+  payments  CustomerPayment[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("customers")
+}
+
+model Sale {
+  id              Int          @id @default(autoincrement())
+  invoiceNumber   String       @unique @db.VarChar(30)
+  clientRequestId String       @unique @db.VarChar(64) // idempotency key from the POS
+  status          SaleStatus   @default(COMPLETED)
+  customerId      Int?
+  customer        Customer?    @relation(fields: [customerId], references: [id])
+  customerName    String?      @db.VarChar(120)
+  customerPhone   String?      @db.VarChar(30)
+  cashierId       Int
+  cashierName     String       @db.VarChar(120)
+  subtotal        Decimal      @db.Decimal(12, 2) // sum of line totals before bill discount
+  lineDiscount    Decimal      @default(0) @db.Decimal(12, 2)
+  billDiscount    Decimal      @default(0) @db.Decimal(12, 2)
+  taxRate         Decimal      @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal      @default(0) @db.Decimal(12, 2)
+  total           Decimal      @db.Decimal(12, 2)
+  totalCost       Decimal      @db.Decimal(12, 2)
+  amountPaid      Decimal      @db.Decimal(12, 2) // excludes credit
+  amountTendered  Decimal      @default(0) @db.Decimal(12, 2) // cash handed over
+  changeDue       Decimal      @default(0) @db.Decimal(12, 2)
+  balanceDue      Decimal      @default(0) @db.Decimal(12, 2) // on customer credit
+  discountApprovedById Int?
+  notes           String?      @db.VarChar(255)
+  offlineCreatedAt DateTime?
+  voidedAt        DateTime?
+  voidedById      Int?
+  voidReason      String?      @db.VarChar(255)
+  createdAt       DateTime     @default(now())
+  items           SaleItem[]
+  payments        Payment[]
+  returns         Return[]
+  warranties      Warranty[]
+
+  @@index([createdAt])
+  @@index([cashierId, createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id            Int          @id @default(autoincrement())
+  saleId        Int
+  sale          Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId     Int
+  product       Product      @relation(fields: [productId], references: [id])
+  productName   String       @db.VarChar(160) // snapshot
+  sku           String       @db.VarChar(40)  // snapshot
+  qty           Int
+  qtyReturned   Int          @default(0)
+  listPrice     Decimal      @db.Decimal(12, 2) // product price at time of sale
+  unitPrice     Decimal      @db.Decimal(12, 2) // price actually charged per unit
+  lineDiscount  Decimal      @default(0) @db.Decimal(12, 2)
+  lineTotal     Decimal      @db.Decimal(12, 2) // qty*unitPrice - lineDiscount
+  allocatedBillDiscount Decimal @default(0) @db.Decimal(12, 2)
+  unitCost      Decimal      @db.Decimal(12, 4) // average cost at time of sale (COGS)
+  serialNumber  String?      @db.VarChar(80)
+  warrantyMonths Int         @default(0)
+  returnItems   ReturnItem[]
+
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model Payment {
+  id        Int           @id @default(autoincrement())
+  saleId    Int
+  sale      Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  reference String?       @db.VarChar(80)
+  createdAt DateTime      @default(now())
+
+  @@index([method, createdAt])
+  @@map("payments")
+}
+
+model CustomerPayment {
+  id           Int           @id @default(autoincrement())
+  customerId   Int
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  saleId       Int?
+  amount       Decimal       @db.Decimal(12, 2)
+  method       PaymentMethod
+  reference    String?       @db.VarChar(80)
+  recordedById Int
+  createdAt    DateTime      @default(now())
+
+  @@map("customer_payments")
+}
+
+// ---------- Returns ----------
+
+model Return {
+  id           Int          @id @default(autoincrement())
+  returnNumber String       @unique @db.VarChar(30)
+  saleId       Int
+  sale         Sale         @relation(fields: [saleId], references: [id])
+  reason       String       @db.VarChar(255)
+  type         String       @default("REFUND") @db.VarChar(20) // REFUND | EXCHANGE
+  refundTotal  Decimal      @db.Decimal(12, 2)
+  costReversed Decimal      @db.Decimal(12, 2)
+  processedById Int
+  approvedById Int?
+  createdAt    DateTime     @default(now())
+  items        ReturnItem[]
+  refunds      Refund[]
+
+  @@index([createdAt])
+  @@map("returns")
+}
+
+model ReturnItem {
+  id         Int      @id @default(autoincrement())
+  returnId   Int
+  ret        Return   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItemId Int
+  saleItem   SaleItem @relation(fields: [saleItemId], references: [id])
+  qty        Int
+  restock    Boolean  // true = resaleable, back into stock; false = damaged
+  refundAmount Decimal @db.Decimal(12, 2)
+
+  @@map("return_items")
+}
+
+model Refund {
+  id        Int           @id @default(autoincrement())
+  returnId  Int
+  ret       Return        @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  createdAt DateTime      @default(now())
+
+  @@index([method, createdAt])
+  @@map("refunds")
+}
+
+// ---------- Stock ----------
+
+enum MovementType {
+  OPENING
+  PURCHASE_RECEIPT
+  SALE
+  SALE_VOID
+  CUSTOMER_RETURN
+  SUPPLIER_RETURN
+  DAMAGED
+  LOST
+  ADJUSTMENT
+}
+
+model StockMovement {
+  id          Int          @id @default(autoincrement())
+  productId   Int
+  product     Product      @relation(fields: [productId], references: [id])
+  type        MovementType
+  qtyChange   Int          // signed
+  qtyAfter    Int
+  unitCost    Decimal      @db.Decimal(12, 4)
+  refType     String?      @db.VarChar(30)
+  refId       Int?
+  reason      String?      @db.VarChar(255)
+  userId      Int
+  createdAt   DateTime     @default(now())
+
+  @@index([productId, createdAt])
+  @@index([type, createdAt])
+  @@map("stock_movements")
+}
+
+model StockAdjustment {
+  id           Int          @id @default(autoincrement())
+  productId    Int
+  product      Product      @relation(fields: [productId], references: [id])
+  type         MovementType // DAMAGED | LOST | ADJUSTMENT | SUPPLIER_RETURN | OPENING
+  qtyChange    Int
+  reason       String       @db.VarChar(255)
+  status       String       @default("APPROVED") @db.VarChar(20) // PENDING | APPROVED | REJECTED
+  requestedById Int
+  approvedById Int?
+  createdAt    DateTime     @default(now())
+  decidedAt    DateTime?
+
+  @@map("stock_adjustments")
+}
+
+// ---------- Money out / cash ----------
+
+model Expense {
+  id             Int           @id @default(autoincrement())
+  category       String        @db.VarChar(60)
+  description    String        @db.VarChar(255)
+  amount         Decimal       @db.Decimal(12, 2)
+  expenseDate    DateTime
+  method         PaymentMethod
+  reference      String?       @db.VarChar(80)
+  attachmentUrl  String?       @db.VarChar(255)
+  paidFromDrawer Boolean       @default(false)
+  recordedById   Int
+  createdAt      DateTime      @default(now())
+
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+model CashClosing {
+  id             Int      @id @default(autoincrement())
+  businessDate   DateTime @db.Date
+  openingFloat   Decimal  @db.Decimal(12, 2)
+  cashSales      Decimal  @db.Decimal(12, 2)
+  cashCollections Decimal @db.Decimal(12, 2)
+  cashRefunds    Decimal  @db.Decimal(12, 2)
+  cashExpenses   Decimal  @db.Decimal(12, 2)
+  expectedCash   Decimal  @db.Decimal(12, 2)
+  countedCash    Decimal  @db.Decimal(12, 2)
+  difference     Decimal  @db.Decimal(12, 2)
+  nonCashTotals  Json
+  notes          String?  @db.VarChar(255)
+  closedById     Int
+  createdAt      DateTime @default(now())
+
+  @@unique([businessDate])
+  @@map("cash_closings")
+}
+
+// ---------- Warranty ----------
+
+model Warranty {
+  id           Int       @id @default(autoincrement())
+  saleId       Int
+  sale         Sale      @relation(fields: [saleId], references: [id])
+  saleItemId   Int       @unique
+  productId    Int
+  product      Product   @relation(fields: [productId], references: [id])
+  serialNumber String?   @db.VarChar(80)
+  startsAt     DateTime
+  expiresAt    DateTime
+  claimStatus  String    @default("NONE") @db.VarChar(20) // NONE | OPEN | IN_REPAIR | REPLACED | REJECTED | CLOSED
+  claimNotes   String?   @db.Text
+  resolution   String?   @db.Text
+  updatedAt    DateTime  @updatedAt
+
+  @@index([expiresAt])
+  @@map("warranties")
+}
+
+// ---------- System ----------
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  username  String?  @db.VarChar(50)
+  action    String   @db.VarChar(60)
+  entity    String   @db.VarChar(40)
+  entityId  String?  @db.VarChar(40)
+  details   Json?
+  ip        String?  @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model BusinessSettings {
+  id              Int      @id @default(1)
+  shopName        String   @default("YASH MOBILE") @db.VarChar(120)
+  address         String   @default("") @db.VarChar(255)
+  phone           String   @default("") @db.VarChar(60)
+  email           String   @default("") @db.VarChar(120)
+  logoUrl         String?  @db.VarChar(255)
+  receiptWidth    Int      @default(80) // 58 | 80
+  defaultPrintFormat String @default("80") @db.VarChar(10) // 58 | 80 | A4
+  receiptFooter   String   @default("Thank you for shopping with us!") @db.VarChar(255)
+  warrantyPolicy  String   @default("") @db.Text
+  taxLabel        String   @default("VAT") @db.VarChar(20)
+  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
+  taxRegNo        String   @default("") @db.VarChar(60)
+  invoicePrefix   String   @default("YM") @db.VarChar(10)
+  currency        String   @default("Rs.") @db.VarChar(10)
+  language        String   @default("en") @db.VarChar(5)
+  updatedAt       DateTime @updatedAt
+
+  @@map("business_settings")
+}
+
+// Gap-free document numbers, incremented inside the creating transaction
+model DocumentSequence {
+  key   String @id @db.VarChar(30) // e.g. INV-2026
+  value Int    @default(0)
+
+  @@map("document_sequences")
+}

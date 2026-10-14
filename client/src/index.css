@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; }
+  body { @apply bg-slate-50 text-slate-800 antialiased; }
+  :focus-visible { @apply outline-none ring-2 ring-brand-500 ring-offset-1; }
+  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
+}
+
+@layer components {
+  .input {
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm
+      placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30
+      disabled:bg-slate-100 disabled:text-slate-500;
+  }
+  .input-error { @apply border-red-400 focus:border-red-500 focus:ring-red-500/30; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+  .th { @apply whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .td { @apply px-3 py-2 align-middle text-sm; }
+  .num { @apply text-right tabular-nums; }
+}
+
+/* ---------- printing ---------- */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+}
+
+.receipt {
+  font-family: 'Courier New', ui-monospace, monospace;
+  color: #000;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.receipt.w58 { width: 48mm; font-size: 10.5px; }
+.receipt.w80 { width: 72mm; }
+.receipt .row { display: flex; justify-content: space-between; gap: 6px; }
+.receipt .rule { border-top: 1px dashed #000; margin: 5px 0; }
+.receipt .center { text-align: center; }
+.receipt .bold { font-weight: 700; }
+.receipt .big { font-size: 1.3em; }
+
+.a4 { width: 186mm; min-height: 260mm; background: #fff; color: #111; font-size: 12px; }
+
+@media print {
+  .print-root { padding: 0 !important; background: #fff !important; }
+  .print-root .sheet { box-shadow: none !important; margin: 0 !important; border: 0 !important; }
+}

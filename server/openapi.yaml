@@ -1,0 +1,212 @@
+openapi: 3.0.3
+info:
+  title: YASH MOBILE POS & Inventory API
+  version: 1.0.0
+  description: |
+    Session-cookie API used by the YASH MOBILE PWA.
+
+    * Sign in with `POST /api/auth/login`; the server sets an httpOnly `yash_sid` cookie (SameSite=Strict).
+    * Every POST/PUT/DELETE must send the header `X-Requested-With: yash-pos` (CSRF protection).
+    * Permissions are enforced on every endpoint. Cost, buying price and profit fields are removed from
+      responses for users without `products.view_cost` / `reports.financial`.
+    * Money values are decimal strings (2 dp). Totals are always recalculated by the server.
+    * Errors: `{ "error": { "code": "...", "message": "...", "details": ... } }`.
+      Notable codes: `VALIDATION` (422), `INSUFFICIENT_STOCK` (409), `APPROVAL_REQUIRED` / `APPROVAL_INVALID` (403),
+      `PAYMENT_SHORT` (422), `DUPLICATE` (409), `RATE_LIMITED` (429), `CSRF` (403), `UNAUTHENTICATED` (401).
+servers:
+  - url: /api
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: yash_sid }
+  parameters:
+    from: { name: from, in: query, schema: { type: string, format: date }, description: 'Local (Asia/Colombo) date, inclusive' }
+    to: { name: to, in: query, schema: { type: string, format: date }, description: 'Local date, inclusive' }
+    id: { name: id, in: path, required: true, schema: { type: integer } }
+  schemas:
+    Approval:
+      type: object
+      description: Supervisor override. Send when a previous call returned APPROVAL_REQUIRED.
+      properties: { username: { type: string }, password: { type: string } }
+    SaleInput:
+      type: object
+      required: [clientRequestId, items, payments]
+      properties:
+        clientRequestId: { type: string, description: 'Idempotency key (UUID). Re-sending the same key returns the original sale.' }
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, qty]
+            properties:
+              productId: { type: integer }
+              qty: { type: integer, minimum: 1 }
+              unitPrice: { type: number, description: 'Defaults to the current selling price' }
+              lineDiscount: { type: number, default: 0 }
+              serialNumber: { type: string }
+        billDiscount: { type: number, default: 0 }
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              method: { type: string, enum: [CASH, CARD, BANK_TRANSFER, QR, CREDIT] }
+              amount: { type: number }
+              reference: { type: string }
+        customer: { type: object, properties: { id: { type: integer }, name: { type: string }, phone: { type: string } } }
+        notes: { type: string }
+        offlineCreatedAt: { type: string, format: date-time }
+        approval: { $ref: '#/components/schemas/Approval' }
+    ReturnInput:
+      type: object
+      required: [saleId, items, reason]
+      properties:
+        saleId: { type: integer }
+        items: { type: array, items: { type: object, properties: { saleItemId: { type: integer }, qty: { type: integer }, restock: { type: boolean } } } }
+        reason: { type: string }
+        type: { type: string, enum: [REFUND, EXCHANGE] }
+        refundMethod: { type: string, enum: [CASH, CARD, BANK_TRANSFER, QR, CREDIT] }
+        approval: { $ref: '#/components/schemas/Approval' }
+    Product:
+      type: object
+      properties:
+        sku: { type: string }
+        barcode: { type: string, nullable: true }
+        name: { type: string }
+        categoryId: { type: integer }
+        brandId: { type: integer, nullable: true }
+        supplierId: { type: integer, nullable: true }
+        compatibility: { type: string }
+        color: { type: string }
+        size: { type: string }
+        connectorType: { type: string }
+        variantGroup: { type: string }
+        purchasePrice: { type: number }
+        sellingPrice: { type: number }
+        minSellingPrice: { type: number }
+        reorderLevel: { type: integer }
+        maxStockLevel: { type: integer }
+        warrantyMonths: { type: integer }
+        isActive: { type: boolean }
+        openingStock: { type: integer, description: 'Create only' }
+security: [{ session: [] }]
+paths:
+  /health: { get: { summary: Health check, security: [], responses: { '200': { description: OK } } } }
+  /auth/login:
+    post:
+      summary: Sign in (rate limited per account and per IP)
+      security: []
+      requestBody: { content: { application/json: { schema: { type: object, properties: { username: { type: string }, password: { type: string } } } } } }
+      responses: { '200': { description: Signed in; sets cookie }, '401': { description: Bad credentials }, '429': { description: Too many attempts } }
+  /auth/logout: { post: { summary: Sign out and delete the session, responses: { '200': { description: OK } } } }
+  /auth/me: { get: { summary: Current user with role and permissions, responses: { '200': { description: OK } } } }
+  /auth/change-password: { post: { summary: Change own password (signs out other sessions), responses: { '200': { description: OK } } } }
+
+  /products:
+    get:
+      summary: List products (products.view)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: categoryId, in: query, schema: { type: integer } }
+        - { name: brandId, in: query, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [LOW, OUT, OVER, OK] } }
+        - { name: active, in: query, schema: { type: string, enum: ['true', 'false', all] } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: pageSize, in: query, schema: { type: integer, maximum: 500 } }
+      responses: { '200': { description: Paged list } }
+    post:
+      summary: Create product (products.manage)
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+      responses: { '201': { description: Created }, '409': { description: Duplicate SKU or barcode }, '422': { description: Invalid } }
+  /products/catalog: { get: { summary: Cost-free catalogue for POS search and offline cache, responses: { '200': { description: OK } } } }
+  /products/export: { get: { summary: CSV export (products.manage), responses: { '200': { description: text/csv } } } }
+  /products/import: { post: { summary: 'CSV import (multipart field "file"); all-or-nothing', responses: { '200': { description: Counts }, '422': { description: Row errors } } } }
+  /products/upload-image: { post: { summary: 'Upload product image (multipart field "image")', responses: { '200': { description: URL } } } }
+  /products/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { summary: Product detail; with cost permission includes lifetime profit and price history, responses: { '200': { description: OK } } }
+    put: { summary: 'Update product; selling price changes need prices.change or an approval', responses: { '200': { description: OK } } }
+  /products/{id}/movements: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Stock movements for a product, responses: { '200': { description: OK } } } }
+
+  /categories: { get: { summary: List categories, responses: { '200': { description: OK } } }, post: { summary: Create (catalog.manage), responses: { '201': { description: Created } } } }
+  /categories/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: Rename / hide, responses: { '200': { description: OK } } } }
+  /brands: { get: { summary: List brands, responses: { '200': { description: OK } } }, post: { summary: Create (catalog.manage), responses: { '201': { description: Created } } } }
+  /brands/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: Rename / hide, responses: { '200': { description: OK } } } }
+  /suppliers: { get: { summary: Suppliers with invoiced / paid / balance, responses: { '200': { description: OK } } }, post: { summary: Create, responses: { '201': { description: Created } } } }
+  /suppliers/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Detail with purchases, payments, buying-price history, responses: { '200': { description: OK } } }, put: { summary: Update, responses: { '200': { description: OK } } } }
+
+  /purchases:
+    get: { summary: List purchases, parameters: [{ $ref: '#/components/parameters/from' }, { $ref: '#/components/parameters/to' }], responses: { '200': { description: OK } } }
+    post: { summary: 'Create a purchase order (DRAFT or ORDERED). Does not change stock.', responses: { '201': { description: Created } } }
+  /purchases/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Detail incl. receipts and payments, responses: { '200': { description: OK } } } }
+  /purchases/{id}/order: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Mark a draft as ordered, responses: { '200': { description: OK } } } }
+  /purchases/{id}/receive:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      summary: 'Goods receipt: stock += received - damaged; additionalCost allocated by value; updates weighted average cost'
+      requestBody: { content: { application/json: { schema: { type: object, properties: { additionalCost: { type: number }, notes: { type: string }, items: { type: array, items: { type: object, properties: { purchaseItemId: { type: integer }, qtyReceived: { type: integer }, qtyDamaged: { type: integer }, qtyMissing: { type: integer } } } } } } } } }
+      responses: { '200': { description: Updated purchase } }
+  /purchases/{id}/invoice: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: Update supplier invoice number / total / notes, responses: { '200': { description: OK } } } }
+  /purchases/{id}/cancel: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Cancel (only without receipts or payments), responses: { '200': { description: OK } } } }
+  /purchases/{id}/payments: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Record a supplier payment (cannot exceed balance), responses: { '201': { description: Created } } } }
+
+  /stock/movements: { get: { summary: Stock movement history, parameters: [{ $ref: '#/components/parameters/from' }, { $ref: '#/components/parameters/to' }], responses: { '200': { description: OK } } } }
+  /stock/adjustments:
+    get: { summary: Adjustment requests, responses: { '200': { description: OK } } }
+    post: { summary: 'Request an adjustment (DAMAGED, LOST, SUPPLIER_RETURN, ADJUSTMENT). Applied immediately for stock.approve holders.', responses: { '201': { description: Created } } }
+  /stock/adjustments/{id}/decide: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Approve or reject, responses: { '200': { description: OK } } } }
+
+  /sales:
+    get: { summary: 'Sales list (own sales unless sales.view_all)', parameters: [{ $ref: '#/components/parameters/from' }, { $ref: '#/components/parameters/to' }, { name: q, in: query, schema: { type: string } }], responses: { '200': { description: OK } } }
+    post:
+      summary: 'Complete a sale (sales.create). Atomic: stock, payments, invoice number and warranty in one transaction.'
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/SaleInput' } } } }
+      responses: { '201': { description: Created }, '200': { description: Duplicate clientRequestId; original returned }, '409': { description: INSUFFICIENT_STOCK }, '403': { description: APPROVAL_REQUIRED }, '422': { description: Validation / PAYMENT_SHORT } }
+  /sales/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Sale detail, responses: { '200': { description: OK } } } }
+  /sales/{id}/receipt: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Receipt data (stored snapshot + business settings), responses: { '200': { description: OK } } } }
+  /sales/{id}/invoice.pdf: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: A4 PDF invoice, responses: { '200': { description: application/pdf } } } }
+  /sales/{id}/reprint: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Record a reprint in the audit log, responses: { '200': { description: OK } } } }
+  /sales/{id}/void: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: 'Void a same-day sale with no returns (sales.void or approval); restocks at original cost', responses: { '200': { description: OK } } } }
+
+  /returns:
+    get: { summary: Returns in a date range, responses: { '200': { description: OK } } }
+    post: { summary: 'Return / exchange against an invoice (returns.approve or approval)', requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/ReturnInput' } } } }, responses: { '201': { description: Created } } }
+  /returns/lookup: { get: { summary: Find a sale by invoice number for a return, parameters: [{ name: invoice, in: query, schema: { type: string } }], responses: { '200': { description: OK } } } }
+
+  /customers: { get: { summary: Search customers (with balance), responses: { '200': { description: OK } } }, post: { summary: Create, responses: { '201': { description: Created } } } }
+  /customers/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: Detail with purchase history, responses: { '200': { description: OK } } }, put: { summary: Update, responses: { '200': { description: OK } } } }
+  /customers/{id}/payments: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Receive a payment on account, responses: { '201': { description: Created } } } }
+  /warranties: { get: { summary: Warranty records (status ACTIVE or claim status filter), responses: { '200': { description: OK } } } }
+  /warranties/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: Update claim, responses: { '200': { description: OK } } } }
+
+  /expenses: { get: { summary: Expenses in a date range, responses: { '200': { description: OK } } }, post: { summary: 'Record expense (multipart; optional "attachment")', responses: { '201': { description: Created } } } }
+  /expenses/categories: { get: { summary: Expense categories, responses: { '200': { description: OK } } } }
+  /expenses/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], delete: { summary: Delete (audited; blocked for drawer expenses on a closed day), responses: { '200': { description: OK } } } }
+  /cash/summary: { get: { summary: Expected drawer cash for a day, parameters: [{ name: date, in: query, schema: { type: string, format: date } }], responses: { '200': { description: OK } } } }
+  /cash/close: { post: { summary: Close a business day with counted cash (once per day), responses: { '201': { description: Created }, '409': { description: Already closed } } } }
+  /cash/closings: { get: { summary: Past closings, responses: { '200': { description: OK } } } }
+
+  /dashboard: { get: { summary: 'Dashboard metrics; financial fields need dashboard.financial', parameters: [{ $ref: '#/components/parameters/from' }, { $ref: '#/components/parameters/to' }], responses: { '200': { description: OK } } } }
+  /reports: { get: { summary: Reports available to the current user, responses: { '200': { description: OK } } } }
+  /reports/{key}:
+    get:
+      summary: Run a report; format=csv exports (reports.export)
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, enum: [daily-sales, period-sales, sales-by-product, sales-by-category, sales-by-brand, sales-by-cashier, profit-by-product, profit-by-category, purchases, supplier-balances, inventory-valuation, low-stock, stock-movements, adjustments, returns, discounts, net-profit, cash-reconciliation, best-sellers, slow-moving] } }
+        - { $ref: '#/components/parameters/from' }
+        - { $ref: '#/components/parameters/to' }
+        - { name: group, in: query, schema: { type: string, enum: [day, week, month] } }
+        - { name: categoryId, in: query, schema: { type: integer } }
+        - { name: brandId, in: query, schema: { type: integer } }
+        - { name: productId, in: query, schema: { type: integer } }
+        - { name: cashierId, in: query, schema: { type: integer } }
+        - { name: format, in: query, schema: { type: string, enum: [json, csv] } }
+      responses: { '200': { description: '{ columns, rows, summary } or CSV' } }
+
+  /users: { get: { summary: Staff accounts (users.manage), responses: { '200': { description: OK } } }, post: { summary: Create staff account, responses: { '201': { description: Created } } } }
+  /users/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: 'Update; password/role/deactivation signs the user out', responses: { '200': { description: OK } } } }
+  /users/staff: { get: { summary: Id + name list for filters, responses: { '200': { description: OK } } } }
+  /roles: { get: { summary: Roles and the permission catalogue, responses: { '200': { description: OK } } }, post: { summary: Create role, responses: { '201': { description: Created } } } }
+  /roles/{id}: { parameters: [{ $ref: '#/components/parameters/id' }], put: { summary: Update role permissions and discount limit, responses: { '200': { description: OK } } } }
+  /audit-logs: { get: { summary: Audit log (audit.view), responses: { '200': { description: OK } } } }
+  /settings: { get: { summary: Business and invoice settings, responses: { '200': { description: OK } } }, put: { summary: Update (settings.manage), responses: { '200': { description: OK } } } }
+  /settings/logo: { post: { summary: 'Upload logo (multipart "logo")', responses: { '200': { description: OK } } } }

@@ -24,3 +24,6 @@ export const uuid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
+/** Whole rupees, for dashboard tiles. */
+export const money0 = (v: Num, cur = 'Rs.') => `${cur} ${Math.round(toNum(v)).toLocaleString('en-LK')}`;

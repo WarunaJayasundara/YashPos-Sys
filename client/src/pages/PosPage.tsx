@@ -1,6 +1,9 @@
 import clsx from 'clsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, CheckCircle2, CreditCard, Minus, Plus, Printer, QrCode, Search, Trash2, User, Landmark, NotebookPen, CloudOff, X, FileDown } from 'lucide-react';
+import {
+  Banknote, CheckCircle2, ChevronDown, ChevronUp, CloudOff, CreditCard, Delete, FileDown, Landmark, Minus, NotebookPen, Percent, Plus, Printer,
+  QrCode, ScanBarcode, Search, ShoppingBag, Trash2, UserRound, X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { api, ApiError, errorText } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -8,15 +11,16 @@ import { getCatalog, queueSale, syncCatalog, type CatalogItem } from '../lib/off
 import { money, toNum, uuid, METHOD_LABEL } from '../lib/format';
 import type { Sale, Settings } from '../lib/types';
 import { useOnline } from '../lib/useOnline';
-import { Badge, Button, Input, Modal } from '../components/ui';
+import { Avatar, Button, Input, Modal } from '../components/ui';
 import { useApproval } from '../components/Approval';
 import { useToast } from '../components/toast';
 
 interface Line { product: CatalogItem; qty: number; unitPrice: number; lineDiscount: number; serialNumber: string }
-interface Pay { method: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'QR' | 'CREDIT'; amount: string; reference: string }
+type Method = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'QR' | 'CREDIT';
+interface Pay { method: Method; amount: string; reference: string }
 
 const cents = (v: number) => Math.round(v * 100);
-const METHODS: { m: Pay['method']; icon: typeof Banknote }[] = [
+const METHODS: { m: Method; icon: typeof Banknote }[] = [
   { m: 'CASH', icon: Banknote }, { m: 'CARD', icon: CreditCard }, { m: 'QR', icon: QrCode }, { m: 'BANK_TRANSFER', icon: Landmark }, { m: 'CREDIT', icon: NotebookPen },
 ];
 
@@ -33,7 +37,7 @@ export function matchProducts(catalog: CatalogItem[], term: string) {
       scored.push({ p, s: (name.startsWith(t) ? 50 : 10) + words.filter((w) => name.includes(w)).length * 5 + (name.startsWith(words[0]) ? 8 : 0) + (p.qtyAvailable > 0 ? 1 : 0) });
     }
   }
-  return scored.sort((a, b) => b.s - a.s || a.p.name.localeCompare(b.p.name)).slice(0, 40).map((x) => x.p);
+  return scored.sort((a, b) => b.s - a.s || a.p.name.localeCompare(b.p.name)).slice(0, 60).map((x) => x.p);
 }
 
 export default function PosPage() {
@@ -45,12 +49,18 @@ export default function PosPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [term, setTerm] = useState('');
+  const [category, setCategory] = useState<number | null>(null);
   const [active, setActive] = useState(0);
   const [lines, setLines] = useState<Line[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [bumped, setBumped] = useState<number | null>(null);
   const [billDiscount, setBillDiscount] = useState('');
+  const [discountPct, setDiscountPct] = useState(false);
   const [customer, setCustomer] = useState({ name: '', phone: '' });
-  const [showCustomer, setShowCustomer] = useState(false);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [done, setDone] = useState<Sale | null>(null);
   const [savedOffline, setSavedOffline] = useState<string | null>(null);
@@ -62,38 +72,49 @@ export default function PosPage() {
   const loadCatalog = async (fromServer: boolean) => {
     if (fromServer) await syncCatalog().catch(() => undefined);
     setCatalog(await getCatalog());
+    setLoaded(true);
   };
   useEffect(() => { loadCatalog(navigator.onLine); }, []);
+  useEffect(() => { requestId.current = uuid(); }, [lines, billDiscount, discountPct]);
 
-  // a changed cart is a different sale: new idempotency key
-  useEffect(() => { requestId.current = uuid(); }, [lines, billDiscount]);
+  const categories = useMemo(() => {
+    const m = new Map<number, { id: number; name: string; count: number }>();
+    for (const p of catalog) {
+      const c = m.get(p.categoryId) ?? { id: p.categoryId, name: p.category, count: 0 };
+      c.count++;
+      m.set(p.categoryId, c);
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [catalog]);
 
-  const results = useMemo(() => matchProducts(catalog, term), [catalog, term]);
-  useEffect(() => setActive(0), [term]);
+  const visible = useMemo(() => {
+    const base = term.trim() ? matchProducts(catalog, term) : [...catalog].sort((a, b) => Number(b.qtyAvailable > 0) - Number(a.qtyAvailable > 0) || a.name.localeCompare(b.name));
+    return category ? base.filter((p) => p.categoryId === category) : base;
+  }, [catalog, term, category]);
+  useEffect(() => setActive(0), [term, category]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
-      if ((e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) && lines.length) { e.preventDefault(); setPayOpen(true); }
+      if ((e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) && lines.length && !payOpen) { e.preventDefault(); setPayOpen(true); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lines.length]);
+  }, [lines.length, payOpen]);
 
   const inCart = (id: number) => lines.find((l) => l.product.id === id)?.qty ?? 0;
 
   const add = (p: CatalogItem) => {
-    if (inCart(p.id) + 1 > p.qtyAvailable) {
-      toast(`Only ${p.qtyAvailable} of ${p.name} in stock`, 'error');
-      return;
-    }
+    if (inCart(p.id) + 1 > p.qtyAvailable) { toast(`Only ${p.qtyAvailable} of ${p.name} in stock`, 'error'); return; }
     setLines((ls) => {
       const i = ls.findIndex((l) => l.product.id === p.id);
       if (i >= 0) return ls.map((l, k) => (k === i ? { ...l, qty: l.qty + 1 } : l));
       return [...ls, { product: p, qty: 1, unitPrice: toNum(p.sellingPrice), lineDiscount: 0, serialNumber: '' }];
     });
-    setTerm('');
-    searchRef.current?.focus();
+    setBumped(p.id);
+    setTimeout(() => setBumped(null), 260);
+    if (term) setTerm('');
+    if (window.matchMedia('(pointer: fine)').matches) searchRef.current?.focus();
   };
 
   const setQty = (id: number, qty: number) => {
@@ -107,15 +128,18 @@ export default function PosPage() {
   const patch = (id: number, p: Partial<Line>) => setLines((ls) => ls.map((l) => (l.product.id === id ? { ...l, ...p } : l)));
 
   const onSearchKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+    const cols = window.innerWidth >= 1536 ? 5 : window.innerWidth >= 1280 ? 4 : 3;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + cols, visible.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - cols, 0)); }
+    else if (e.key === 'ArrowRight' && term === '') { setActive((a) => Math.min(a + 1, visible.length - 1)); }
+    else if (e.key === 'ArrowLeft' && term === '') { setActive((a) => Math.max(a - 1, 0)); }
     else if (e.key === 'Escape') setTerm('');
     else if (e.key === 'Enter') {
       e.preventDefault();
       const t = term.trim().toLowerCase();
       // scanners type the code and press Enter: exact barcode/SKU wins
       const exact = catalog.find((p) => p.barcode?.toLowerCase() === t || p.sku.toLowerCase() === t);
-      const pick = exact ?? results[active];
+      const pick = exact ?? (t ? visible[active] : undefined);
       if (pick) add(pick);
       else if (t) toast(`No product matches "${term}"`, 'error');
     }
@@ -125,24 +149,26 @@ export default function PosPage() {
   const subtotal = lines.reduce((a, l) => a + cents(l.unitPrice) * l.qty, 0);
   const lineDisc = lines.reduce((a, l) => a + cents(l.lineDiscount), 0);
   const listTotal = lines.reduce((a, l) => a + cents(toNum(l.product.sellingPrice)) * l.qty, 0);
-  const bill = cents(toNum(billDiscount));
-  const net = Math.max(0, subtotal - lineDisc - bill);
+  const afterLines = subtotal - lineDisc;
+  const bill = discountPct ? Math.round((afterLines * Math.min(100, toNum(billDiscount))) / 100) : cents(toNum(billDiscount));
+  const net = Math.max(0, afterLines - bill);
   const tax = Math.round((net * taxRate) / 100);
   const total = net + tax;
-  const discountPct = listTotal ? ((listTotal - net) * 100) / listTotal : 0;
-  const overLimit = discountPct > (user?.maxDiscountPercent ?? 0) + 1e-9 && !can('discounts.override');
+  const discPct = listTotal ? ((listTotal - net) * 100) / listTotal : 0;
+  const overLimit = discPct > (user?.maxDiscountPercent ?? 0) + 1e-9 && !can('discounts.override');
   const belowMin = lines.some((l) => cents(l.unitPrice) * l.qty - cents(l.lineDiscount) < cents(toNum(l.product.minSellingPrice)) * l.qty);
+  const itemCount = lines.reduce((a, l) => a + l.qty, 0);
 
   const reset = () => {
-    setLines([]); setBillDiscount(''); setCustomer({ name: '', phone: '' }); setShowCustomer(false);
+    setLines([]); setBillDiscount(''); setDiscountPct(false); setCustomer({ name: '', phone: '' }); setCustomerOpen(false); setExpanded(null); setCartOpen(false);
     requestId.current = uuid();
-    searchRef.current?.focus();
+    if (window.matchMedia('(pointer: fine)').matches) searchRef.current?.focus();
   };
 
   const buildPayload = (pays: Pay[]) => ({
     clientRequestId: requestId.current,
     items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, unitPrice: l.unitPrice, lineDiscount: l.lineDiscount, serialNumber: l.serialNumber || undefined })),
-    billDiscount: toNum(billDiscount),
+    billDiscount: bill / 100,
     payments: pays.filter((p) => toNum(p.amount) > 0).map((p) => ({ method: p.method, amount: toNum(p.amount), reference: p.reference || undefined })),
     customer: customer.phone || customer.name ? { name: customer.name || undefined, phone: customer.phone || undefined } : undefined,
   });
@@ -182,159 +208,227 @@ export default function PosPage() {
     }
   };
 
+  const cart = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-bold text-slate-900">Current sale</h2>
+          {itemCount > 0 && <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-bold text-white">{itemCount}</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          {lines.length > 0 && <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => window.confirm('Clear this sale?') && reset()}><Trash2 className="h-4 w-4" />Clear</Button>}
+          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setCartOpen(false)} aria-label="Close bill"><X className="h-5 w-5" /></button>
+        </div>
+      </div>
+
+      <button onClick={() => setCustomerOpen((o) => !o)} className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left transition hover:bg-slate-50">
+        <span className={clsx('grid h-8 w-8 place-items-center rounded-full', customer.phone || customer.name ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-400')}><UserRound className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1 text-sm">{customer.phone || customer.name ? <><span className="font-semibold text-slate-800">{customer.name || 'Customer'}</span> <span className="text-slate-500">{customer.phone}</span></> : <span className="text-slate-500">Walk-in customer <span className="text-slate-400">· add details</span></span>}</span>
+        {customerOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+      </button>
+      {customerOpen && (
+        <div className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+          <Input placeholder="Name" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} aria-label="Customer name" />
+          <Input placeholder="Phone" inputMode="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} aria-label="Customer phone" />
+          <p className="col-span-2 text-[11px] text-slate-500">Optional. Needed for warranty look-ups and selling on account.</p>
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!lines.length ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-400"><ShoppingBag className="h-7 w-7" /></span>
+            <p className="font-semibold text-slate-700">No items yet</p>
+            <p className="text-sm text-slate-500">Scan a barcode or tap a product.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {lines.map((l) => {
+              const lineTotal = cents(l.unitPrice) * l.qty - cents(l.lineDiscount);
+              const below = lineTotal < cents(toNum(l.product.minSellingPrice)) * l.qty;
+              const edited = cents(l.unitPrice) !== cents(toNum(l.product.sellingPrice)) || l.lineDiscount > 0;
+              const open = expanded === l.product.id;
+              return (
+                <li key={l.product.id} className={clsx('px-4 py-3 transition', open && 'bg-slate-50/80')}>
+                  <div className="flex items-start gap-3">
+                    <button className="min-w-0 flex-1 text-left" onClick={() => setExpanded(open ? null : l.product.id)} aria-expanded={open}>
+                      <p className="text-sm font-semibold leading-snug text-slate-900">{l.product.name}</p>
+                      <p className={clsx('mt-0.5 text-xs', below ? 'font-medium text-red-600' : 'text-slate-500')}>
+                        {money(l.unitPrice)} each{l.lineDiscount ? ` · −${money(l.lineDiscount)}` : ''}{edited && !below ? ' · edited' : ''}{below ? ' · below minimum' : ''}
+                      </p>
+                    </button>
+                    <p className="pt-0.5 text-sm font-bold tabular-nums text-slate-900">{money(lineTotal / 100)}</p>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <button className="grid h-9 w-9 place-items-center rounded-l-xl text-slate-600 hover:bg-slate-50 active:bg-slate-100" onClick={() => setQty(l.product.id, l.qty - 1)} aria-label="Decrease quantity">{l.qty === 1 ? <Trash2 className="h-4 w-4 text-red-500" /> : <Minus className="h-4 w-4" />}</button>
+                      <input aria-label="Quantity" inputMode="numeric" className="h-9 w-11 border-x border-slate-200 text-center text-sm font-semibold tabular-nums outline-none"
+                        value={l.qty} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) setQty(l.product.id, v); }} />
+                      <button className="grid h-9 w-9 place-items-center rounded-r-xl text-slate-600 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-30" disabled={l.qty >= l.product.qtyAvailable} onClick={() => setQty(l.product.id, l.qty + 1)} aria-label="Increase quantity"><Plus className="h-4 w-4" /></button>
+                    </div>
+                    <button className="text-xs font-medium text-brand-600 hover:underline" onClick={() => setExpanded(open ? null : l.product.id)}>{open ? 'Done' : 'Price / discount'}</button>
+                  </div>
+                  {open && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 animate-fade-up">
+                      <Input label="Unit price" type="number" min={0} step="0.01" className="text-right tabular-nums" error={below ? `Min ${money(l.product.minSellingPrice)}` : undefined} value={l.unitPrice} onChange={(e) => patch(l.product.id, { unitPrice: Math.max(0, toNum(e.target.value)) })} />
+                      <Input label="Line discount" type="number" min={0} step="0.01" className="text-right tabular-nums" placeholder="0.00" value={l.lineDiscount || ''} onChange={(e) => patch(l.product.id, { lineDiscount: Math.max(0, toNum(e.target.value)) })} />
+                      {l.product.warrantyMonths > 0 && <Input wrapClass="col-span-2" label={`Serial / IMEI (warranty ${l.product.warrantyMonths} months)`} value={l.serialNumber} onChange={(e) => patch(l.product.id, { serialNumber: e.target.value })} />}
+                      <p className="col-span-2 text-[11px] text-slate-500">List price {money(l.product.sellingPrice)} · {l.product.qtyAvailable} in stock</p>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="border-t border-slate-200/80 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <dl className="space-y-1.5 text-sm">
+          <div className="flex justify-between text-slate-600"><dt>Subtotal</dt><dd className="tabular-nums">{money(afterLines / 100)}</dd></div>
+          <div className="flex items-center justify-between gap-2 text-slate-600">
+            <dt>Discount</dt>
+            <dd className="flex items-center gap-1.5">
+              <div className="relative">
+                <input type="number" min={0} step="0.01" className="input h-8 w-28 pr-7 text-right tabular-nums" placeholder="0" value={billDiscount} onChange={(e) => setBillDiscount(e.target.value)} aria-label="Bill discount" />
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">{discountPct ? '%' : 'Rs'}</span>
+              </div>
+              <button onClick={() => setDiscountPct((p) => !p)} className={clsx('grid h-8 w-8 place-items-center rounded-lg border text-xs font-bold transition', discountPct ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-500 hover:bg-slate-50')} aria-label="Toggle percent discount" title="Percent / amount"><Percent className="h-3.5 w-3.5" /></button>
+            </dd>
+          </div>
+          {bill > 0 && <div className="flex justify-between text-emerald-700"><dt>You save</dt><dd className="tabular-nums">−{money(bill / 100)}</dd></div>}
+          {tax > 0 && <div className="flex justify-between text-slate-600"><dt>{settings.data?.taxLabel} ({taxRate}%)</dt><dd className="tabular-nums">{money(tax / 100)}</dd></div>}
+          <div className="flex items-baseline justify-between pt-1.5"><dt className="text-base font-bold text-slate-900">Total</dt><dd className="text-2xl font-extrabold tracking-tight tabular-nums text-slate-900">{money(total / 100)}</dd></div>
+        </dl>
+        {(overLimit || belowMin) && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">{overLimit ? `Discount ${discPct.toFixed(1)}% is above your ${user?.maxDiscountPercent}% limit. ` : 'A price is below its minimum. '}A supervisor will approve at payment.</p>}
+        {bill > afterLines && <p className="mt-2 text-xs font-medium text-red-600">The discount is larger than the bill.</p>}
+        <Button size="xl" variant="success" className="mt-3 w-full justify-between" disabled={!lines.length || bill > afterLines} onClick={() => setPayOpen(true)}>
+          <span>Charge</span><span className="tabular-nums">{money(total / 100)}</span>
+        </Button>
+        <p className="mt-2 hidden text-center text-[11px] text-slate-400 lg:block"><span className="kbd">F2</span> search · <span className="kbd">Enter</span> add · <span className="kbd">F9</span> pay</p>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="-mx-3 -my-4 flex min-h-[calc(100vh-7rem)] flex-col lg:-mx-8 lg:flex-row sm:-mx-5">
+    <div className="flex min-h-0 flex-1">
       {dialog}
-      {/* product search */}
-      <section className="flex min-w-0 flex-1 flex-col border-slate-200 bg-white lg:border-r">
-        <div className="sticky top-[52px] z-10 border-b border-slate-100 bg-white p-3 lg:top-0">
+      {/* catalogue */}
+      <section className="flex min-w-0 flex-1 flex-col">
+        <div className="sticky top-14 z-10 space-y-3 border-b border-slate-200/80 bg-[#f3f5f9]/95 px-3 py-3 backdrop-blur sm:px-5 lg:top-16 lg:px-6">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <input
               ref={searchRef}
               autoFocus
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               onKeyDown={onSearchKey}
-              className="input h-12 pl-10 text-base"
-              placeholder="Scan barcode or search name, SKU, brand, model (F2)"
+              className="input h-12 rounded-xl pl-11 pr-24 text-base shadow-card"
+              placeholder="Scan or search products"
               aria-label="Search products"
               autoComplete="off"
               enterKeyHint="search"
             />
+            <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1.5 text-xs text-slate-400 sm:flex"><ScanBarcode className="h-4 w-4" /><span className="kbd">F2</span></span>
+            {term && <button className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 sm:right-20" onClick={() => { setTerm(''); searchRef.current?.focus(); }} aria-label="Clear search"><X className="h-4 w-4" /></button>}
           </div>
-          {!online && <p className="mt-2 flex items-center gap-1 text-xs font-medium text-red-700"><CloudOff className="h-4 w-4" />Offline: showing cached products; stock shown may be out of date.</p>}
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 scrollbar-none sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6" role="tablist" aria-label="Categories">
+            {[{ id: null as number | null, name: 'All', count: catalog.length }, ...categories].map((c) => (
+              <button key={c.id ?? 'all'} role="tab" aria-selected={category === c.id} onClick={() => setCategory(c.id)}
+                className={clsx('chip', category === c.id ? 'border-ink-900 bg-ink-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900')}>
+                {c.name}<span className="text-xs text-slate-400">{c.count}</span>
+              </button>
+            ))}
+          </div>
+          {!online && <p className="flex items-center gap-1.5 text-xs font-medium text-red-700"><CloudOff className="h-4 w-4" />Offline: cached products, stock may be out of date. Sales are saved on this device.</p>}
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {term ? (
-            results.length ? (
-              <ul role="listbox" aria-label="Search results" className="divide-y divide-slate-100">
-                {results.map((p, i) => {
-                  const left = p.qtyAvailable - inCart(p.id);
-                  return (
-                    <li key={p.id} role="option" aria-selected={i === active}>
-                      <button
-                        onClick={() => add(p)}
-                        onMouseEnter={() => setActive(i)}
-                        disabled={left <= 0}
-                        className={clsx('flex w-full items-center gap-3 px-4 py-3 text-left disabled:opacity-50', i === active && 'bg-brand-50')}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium text-slate-900">{p.name}</p>
-                          <p className="truncate text-xs text-slate-500">{p.sku}{p.brand ? ` · ${p.brand}` : ''}{p.compatibility ? ` · ${p.compatibility}` : ''}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold tabular-nums">{money(p.sellingPrice)}</p>
-                          <Badge tone={left <= 0 ? 'red' : left <= 3 ? 'amber' : 'green'}>{left <= 0 ? 'Out of stock' : `${left} in stock`}</Badge>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : <p className="p-8 text-center text-sm text-slate-500">No products match "{term}".</p>
+
+        <div className="flex-1 px-3 pb-32 pt-3 sm:px-5 lg:px-6 lg:pb-6">
+          {!loaded ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{Array.from({ length: 10 }, (_, i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-slate-200/70" />)}</div>
+          ) : visible.length ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" role="listbox" aria-label="Products">
+              {visible.map((p, i) => {
+                const qty = inCart(p.id);
+                const left = p.qtyAvailable - qty;
+                const out = p.qtyAvailable <= 0;
+                return (
+                  <button key={p.id} role="option" aria-selected={i === active} onClick={() => add(p)} disabled={left <= 0}
+                    className={clsx('group relative flex flex-col overflow-hidden rounded-2xl border bg-white text-left shadow-card transition duration-150',
+                      'hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-lift active:translate-y-0 active:scale-[.98] disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-card',
+                      i === active && term ? 'border-brand-500 ring-2 ring-brand-500/25' : 'border-slate-200/80',
+                      qty > 0 && 'border-brand-400 ring-2 ring-brand-500/20', bumped === p.id && 'animate-bump')}>
+                    <div className={clsx('relative', out && 'opacity-40 grayscale')}>
+                      <Avatar name={p.name} src={p.imageUrl} className="aspect-[2/1] w-full text-xl xl:aspect-[16/10] xl:text-2xl" />
+                      {qty > 0 && <span className="absolute right-2 top-2 grid h-7 min-w-7 place-items-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white shadow-md ring-2 ring-white animate-pop">{qty}</span>}
+                      <span className={clsx('absolute bottom-2 left-2 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold backdrop-blur',
+                        out ? 'bg-red-600/90 text-white' : left <= 3 ? 'bg-amber-400/95 text-amber-950' : 'bg-white/85 text-slate-700')}>
+                        {out ? 'Out of stock' : `${left} left`}
+                      </span>
+                    </div>
+                    <div className="flex flex-1 flex-col p-3">
+                      <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">{p.name}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500">{[p.brand, p.compatibility].filter(Boolean).join(' · ') || p.sku}</p>
+                      <p className="mt-auto whitespace-nowrap pt-2 text-[15px] font-bold tabular-nums text-brand-700">{money(p.sellingPrice)}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
-            <div className="p-6 text-center text-sm text-slate-500">
-              <p>Scan a barcode or type to search. {catalog.length} active products loaded.</p>
-              <p className="mt-2 hidden text-xs lg:block">Keys: <kbd className="rounded border px-1">F2</kbd> search · <kbd className="rounded border px-1">↑ ↓</kbd> choose · <kbd className="rounded border px-1">Enter</kbd> add · <kbd className="rounded border px-1">F9</kbd> pay</p>
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-200/60 text-slate-400"><Search className="h-7 w-7" /></span>
+              <p className="font-semibold text-slate-700">{catalog.length ? `Nothing matches "${term}"` : 'No products yet'}</p>
+              <p className="text-sm text-slate-500">{catalog.length ? 'Try a shorter search or another category.' : 'Add products first, then they appear here.'}</p>
             </div>
           )}
         </div>
       </section>
 
-      {/* cart */}
-      <section className="flex w-full flex-col bg-slate-50 lg:w-[440px] xl:w-[500px]">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-          <h2 className="font-semibold">Current bill <span className="text-sm font-normal text-slate-500">({lines.reduce((a, l) => a + l.qty, 0)} items)</span></h2>
-          {lines.length > 0 && <Button size="sm" variant="ghost" onClick={() => window.confirm('Clear the bill?') && reset()}><X className="h-4 w-4" />Clear</Button>}
-        </div>
-        <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {!lines.length && <p className="p-8 text-center text-sm text-slate-500">The bill is empty.</p>}
-          {lines.map((l) => {
-            const lineTotal = cents(l.unitPrice) * l.qty - cents(l.lineDiscount);
-            const below = lineTotal < cents(toNum(l.product.minSellingPrice)) * l.qty;
-            return (
-              <div key={l.product.id} className="card p-3">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium leading-snug">{l.product.name}</p>
-                    <p className="text-xs text-slate-500">{l.product.sku} · {l.product.qtyAvailable} in stock</p>
-                  </div>
-                  <button className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setQty(l.product.id, 0)} aria-label={`Remove ${l.product.name}`}><Trash2 className="h-4 w-4" /></button>
-                </div>
-                <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <div className="flex items-center rounded-lg border border-slate-300 bg-white">
-                    <button className="p-2" onClick={() => setQty(l.product.id, l.qty - 1)} aria-label="Decrease quantity"><Minus className="h-4 w-4" /></button>
-                    <input aria-label="Quantity" inputMode="numeric" className="w-12 border-x border-slate-200 py-1.5 text-center text-sm tabular-nums" value={l.qty}
-                      onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) setQty(l.product.id, v); }} />
-                    <button className="p-2" onClick={() => setQty(l.product.id, l.qty + 1)} aria-label="Increase quantity"><Plus className="h-4 w-4" /></button>
-                  </div>
-                  <label className="flex-1 text-xs text-slate-500">Unit price
-                    <input type="number" min={0} step="0.01" className={clsx('input py-1.5 text-right tabular-nums', below && 'input-error')} value={l.unitPrice}
-                      onChange={(e) => patch(l.product.id, { unitPrice: Math.max(0, toNum(e.target.value)) })} />
-                  </label>
-                  <label className="w-24 text-xs text-slate-500">Discount
-                    <input type="number" min={0} step="0.01" className="input py-1.5 text-right tabular-nums" value={l.lineDiscount || ''} placeholder="0"
-                      onChange={(e) => patch(l.product.id, { lineDiscount: Math.max(0, toNum(e.target.value)) })} />
-                  </label>
-                  <p className="w-full text-right text-sm font-semibold tabular-nums sm:w-auto sm:min-w-24">{money(lineTotal / 100)}</p>
-                </div>
-                {below && <p className="mt-1 text-xs text-red-600">Below minimum price {money(l.product.minSellingPrice)}: needs supervisor approval</p>}
-                {l.product.warrantyMonths > 0 && (
-                  <input className="input mt-2 py-1.5 text-xs" placeholder={`Serial / IMEI (warranty ${l.product.warrantyMonths} months)`} value={l.serialNumber}
-                    onChange={(e) => patch(l.product.id, { serialNumber: e.target.value })} aria-label="Serial number" />
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {/* desktop cart */}
+      <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-[400px] shrink-0 border-l border-slate-200/80 bg-white lg:block xl:w-[430px]" aria-label="Current sale">{cart}</aside>
 
-        <div className="sticky bottom-[60px] border-t border-slate-200 bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] lg:bottom-0">
-          <button className="mb-2 flex items-center gap-1 text-sm text-brand-700" onClick={() => setShowCustomer((s) => !s)}>
-            <User className="h-4 w-4" />{customer.phone || customer.name ? `${customer.name || 'Customer'} ${customer.phone}` : 'Add customer (optional)'}
-          </button>
-          {showCustomer && (
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              <Input placeholder="Name" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} aria-label="Customer name" />
-              <Input placeholder="Phone" inputMode="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} aria-label="Customer phone" />
-            </div>
-          )}
-          <dl className="space-y-1 text-sm">
-            <div className="flex justify-between"><dt className="text-slate-500">Subtotal</dt><dd className="tabular-nums">{money((subtotal - lineDisc) / 100)}</dd></div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-slate-500">Bill discount</dt>
-              <dd><input type="number" min={0} step="0.01" className="input w-28 py-1 text-right tabular-nums" placeholder="0.00" value={billDiscount} onChange={(e) => setBillDiscount(e.target.value)} aria-label="Bill discount" /></dd>
-            </div>
-            {tax > 0 && <div className="flex justify-between"><dt className="text-slate-500">{settings.data?.taxLabel} ({taxRate}%)</dt><dd className="tabular-nums">{money(tax / 100)}</dd></div>}
-            <div className="flex justify-between border-t border-slate-100 pt-2 text-lg font-bold"><dt>Total</dt><dd className="tabular-nums">{money(total / 100)}</dd></div>
-          </dl>
-          {(overLimit || belowMin) && <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{overLimit ? `Discount ${discountPct.toFixed(1)}% is above your ${user?.maxDiscountPercent}% limit. ` : ''}A supervisor will be asked to approve.</p>}
-          <Button size="lg" className="mt-3 w-full" disabled={!lines.length || bill > subtotal - lineDisc} onClick={() => setPayOpen(true)}>
-            Pay {money(total / 100)} <span className="hidden text-xs opacity-70 lg:inline">(F9)</span>
-          </Button>
+      {/* phone / tablet: bill bar + sheet */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
+        <button onClick={() => setCartOpen(true)} disabled={!lines.length}
+          className="flex h-14 w-full items-center gap-3 rounded-2xl bg-ink-900 px-4 text-white shadow-lg transition-transform active:scale-[.99] disabled:bg-slate-300">
+          <span className="relative"><ShoppingBag className="h-6 w-6" />{itemCount > 0 && <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-gold-400 px-1 text-[11px] font-bold text-ink-900">{itemCount}</span>}</span>
+          <span className="flex-1 text-left text-sm font-semibold">{lines.length ? 'View bill' : 'Tap products to add'}</span>
+          <span className="text-lg font-bold tabular-nums">{money(total / 100)}</span>
+        </button>
+      </div>
+      {cartOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Current sale">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => setCartOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 top-10 overflow-hidden rounded-t-3xl bg-white shadow-pop animate-slide-up sm:left-auto sm:top-0 sm:w-[440px] sm:rounded-none">{cart}</div>
         </div>
-      </section>
+      )}
 
       <PaymentModal open={payOpen} total={total} onClose={() => setPayOpen(false)} onPay={checkout} hasCustomer={!!customer.phone} online={online} />
 
-      <Modal open={!!done} onClose={() => setDone(null)} title="Sale completed" footer={<Button onClick={() => { setDone(null); searchRef.current?.focus(); }}>New sale</Button>}>
+      <Modal open={!!done} onClose={() => setDone(null)} title="Sale completed">
         {done && (
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center gap-2 text-emerald-700"><CheckCircle2 className="h-6 w-6" /><span className="text-base font-semibold">{done.invoiceNumber}</span></div>
-            <p>Total <b>{money(done.total)}</b>{toNum(done.changeDue) > 0 && <> · Change due <b className="text-lg">{money(done.changeDue)}</b></>}</p>
-            <p className="text-xs text-slate-500">The receipt opened in a new tab. If it was blocked, print here:</p>
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col items-center pb-2 text-center">
+            <span className="mt-1 grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-600 animate-pop"><CheckCircle2 className="h-9 w-9" /></span>
+            <p className="mt-3 text-sm text-slate-500">Invoice <b className="text-slate-800">{done.invoiceNumber}</b> · total {money(done.total)}</p>
+            {toNum(done.changeDue) > 0 ? (
+              <div className="mt-4 w-full rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-600/15"><p className="text-sm font-medium text-emerald-800">Change due</p><p className="text-4xl font-extrabold tracking-tight tabular-nums text-emerald-700">{money(done.changeDue)}</p></div>
+            ) : <p className="mt-4 text-lg font-semibold text-slate-800">Paid in full</p>}
+            <p className="mt-4 text-xs text-slate-500">The receipt opened in a new tab. Print again:</p>
+            <div className="mt-2 grid w-full grid-cols-4 gap-2">
               {(['80', '58', 'A4'] as const).map((f) => (
-                <Button key={f} variant="secondary" size="sm" onClick={() => window.open(`/print/${done.id}?format=${f}&auto=1`, '_blank', 'noopener')}><Printer className="h-4 w-4" />{f === 'A4' ? 'A4' : `${f} mm`}</Button>
+                <Button key={f} variant="secondary" size="sm" onClick={() => window.open(`/print/${done.id}?format=${f}&auto=1`, '_blank', 'noopener')}><Printer className="h-3.5 w-3.5" />{f === 'A4' ? 'A4' : `${f}mm`}</Button>
               ))}
-              <Button variant="secondary" size="sm" onClick={() => window.open(`/api/sales/${done.id}/invoice.pdf`, '_blank', 'noopener')}><FileDown className="h-4 w-4" />PDF</Button>
+              <Button variant="secondary" size="sm" onClick={() => window.open(`/api/sales/${done.id}/invoice.pdf`, '_blank', 'noopener')}><FileDown className="h-3.5 w-3.5" />PDF</Button>
             </div>
+            <Button size="lg" className="mt-5 w-full" onClick={() => { setDone(null); searchRef.current?.focus(); }} autoFocus>New sale</Button>
           </div>
         )}
       </Modal>
 
       <Modal open={!!savedOffline} onClose={() => setSavedOffline(null)} title="Saved on this device" footer={<Button onClick={() => setSavedOffline(null)}>OK</Button>}>
-        <p className="text-sm">The sale is <b>pending</b>: it is stored on this device and will be sent to the server when the connection returns. It is not a completed sale and has no invoice number until the server accepts it. Stock is re-checked then.</p>
+        <div className="flex gap-3 text-sm"><CloudOff className="h-6 w-6 shrink-0 text-amber-600" /><p>The sale is <b>pending</b>: it is stored on this device and will be sent when the connection returns. It has no invoice number until the server accepts it, and stock is re-checked then.</p></div>
       </Modal>
     </div>
   );
@@ -342,32 +436,46 @@ export default function PosPage() {
 
 function PaymentModal({ open, total, onClose, onPay, hasCustomer, online }: { open: boolean; total: number; onClose: () => void; onPay: (p: Pay[]) => Promise<void>; hasCustomer: boolean; online: boolean }) {
   const [pays, setPays] = useState<Pay[]>([]);
+  const [current, setCurrent] = useState<Method>('CASH');
+  const [fresh, setFresh] = useState(true);
   const [busy, setBusy] = useState(false);
-  const cashRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setPays([{ method: 'CASH', amount: (total / 100).toFixed(2), reference: '' }]);
-      setTimeout(() => cashRef.current?.select(), 50);
+      setPays([{ method: 'CASH', amount: (total / 100).toFixed(2), reference: '' }]); setCurrent('CASH'); setFresh(true);
+      // the search box behind the dialog must not swallow keypad typing
+      (document.activeElement as HTMLElement | null)?.blur();
     }
   }, [open, total]);
 
   const paidNonCash = pays.filter((p) => p.method !== 'CASH').reduce((a, p) => a + cents(toNum(p.amount)), 0);
   const cash = pays.filter((p) => p.method === 'CASH').reduce((a, p) => a + cents(toNum(p.amount)), 0);
   const cashDue = total - paidNonCash;
+  const paidTotal = paidNonCash + cash;
   const change = cash - Math.max(0, cashDue);
-  const short = cashDue > 0 && cash < cashDue;
+  const remaining = Math.max(0, total - paidTotal);
+  const short = remaining > 0;
   const overNonCash = paidNonCash > total;
   const needsCustomer = pays.some((p) => p.method === 'CREDIT' && toNum(p.amount) > 0) && !hasCustomer;
+  const ok = !short && !overNonCash && !needsCustomer && pays.length > 0;
+  const cur = pays.find((p) => p.method === current);
 
-  const addMethod = (m: Pay['method']) => {
+  const select = (m: Method) => {
+    setCurrent(m);
+    setFresh(true);
     if (pays.some((p) => p.method === m)) return;
-    const remaining = Math.max(0, total - pays.reduce((a, p) => a + cents(toNum(p.amount)), 0));
-    if (pays.length === 1 && pays[0].method === 'CASH' && cents(toNum(pays[0].amount)) === total) {
-      setPays([{ method: m, amount: (total / 100).toFixed(2), reference: '' }]);
-      return;
-    }
+    // the only line still holds the full amount: switch method instead of splitting
+    if (pays.length === 1 && cents(toNum(pays[0].amount)) === total) { setPays([{ method: m, amount: (total / 100).toFixed(2), reference: '' }]); return; }
     setPays([...pays, { method: m, amount: (remaining / 100).toFixed(2), reference: '' }]);
+  };
+  const setAmount = (v: string) => setPays((ps) => ps.map((p) => (p.method === current ? { ...p, amount: v } : p)));
+  const key = (k: string) => {
+    const s = fresh ? '' : cur?.amount ?? '';
+    setFresh(false);
+    if (k === 'back') return setAmount(s.slice(0, -1));
+    if (k === '.' && s.includes('.')) return;
+    if (s.includes('.') && s.split('.')[1].length >= 2) return;
+    setAmount(`${s}${k}`);
   };
 
   const submit = async () => {
@@ -375,46 +483,94 @@ function PaymentModal({ open, total, onClose, onPay, hasCustomer, online }: { op
     try { await onPay(pays); } finally { setBusy(false); }
   };
 
-  const quick = [total / 100, Math.ceil(total / 50000) * 500, Math.ceil(total / 100000) * 1000, Math.ceil(total / 500000) * 5000].filter((v, i, a) => a.indexOf(v) === i && v >= total / 100);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: globalThis.KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      // typing in the dialog's own reference field is normal text input
+      if (t?.tagName === 'INPUT' && t.closest('[role=dialog]')) return;
+      if (/^[0-9.]$/.test(e.key)) { e.preventDefault(); key(e.key); }
+      else if (e.key === 'Backspace') { e.preventDefault(); key('back'); }
+      else if (e.key === 'Enter' && ok && !busy) { e.preventDefault(); submit(); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
+  const quick = [...new Set([total / 100, Math.ceil(total / 50000) * 500, Math.ceil(total / 100000) * 1000, Math.ceil(total / 500000) * 5000])].filter((v) => v >= total / 100).slice(0, 4);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Payment - ${money(total / 100)}`} footer={<>
-      <Button variant="secondary" onClick={onClose}>Back</Button>
-      <Button size="lg" variant="success" loading={busy} disabled={short || overNonCash || needsCustomer || !pays.length} onClick={submit}>
-        {online ? 'Complete sale' : 'Save offline (pending)'}
+    <Modal open={open} onClose={onClose} title="Take payment" wide footer={
+      <Button size="xl" variant="success" className="w-full" loading={busy} disabled={!ok} onClick={submit}>
+        {!online ? 'Save offline (pending)' : short ? `Short by ${money(remaining / 100)}` : change > 0 ? `Complete sale · change ${money(change / 100)}` : 'Complete sale'}
       </Button>
-    </>}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-1.5">
-          {METHODS.map(({ m, icon: Icon }) => (
-            <button key={m} onClick={() => addMethod(m)} className={clsx('flex flex-col items-center gap-1 rounded-lg border p-2 text-[11px] font-medium', pays.some((p) => p.method === m) ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50')}>
-              <Icon className="h-5 w-5" />{METHOD_LABEL[m]}
-            </button>
-          ))}
-        </div>
-        {pays.map((p, i) => (
-          <div key={p.method} className="flex flex-wrap items-end gap-2">
-            <Input ref={p.method === 'CASH' ? cashRef : undefined} wrapClass="flex-1 min-w-32" label={p.method === 'CASH' ? 'Cash received' : METHOD_LABEL[p.method]} type="number" min={0} step="0.01" inputMode="decimal" value={p.amount}
-              onChange={(e) => setPays(pays.map((x, k) => (k === i ? { ...x, amount: e.target.value } : x)))}
-              onKeyDown={(e) => e.key === 'Enter' && !short && !overNonCash && !needsCustomer && submit()} />
-            {p.method !== 'CASH' && p.method !== 'CREDIT' && (
-              <Input wrapClass="flex-1 min-w-32" label="Reference (optional)" value={p.reference} onChange={(e) => setPays(pays.map((x, k) => (k === i ? { ...x, reference: e.target.value } : x)))} />
-            )}
-            {pays.length > 1 && <Button variant="ghost" onClick={() => setPays(pays.filter((_, k) => k !== i))} aria-label={`Remove ${METHOD_LABEL[p.method]}`}><Trash2 className="h-4 w-4" /></Button>}
+    }>
+      <div className="grid gap-5 md:grid-cols-[1fr_1.05fr]">
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-ink-900 p-4 text-white">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Amount due</p>
+            <p className="text-3xl font-extrabold tracking-tight tabular-nums">{money(total / 100)}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-xl bg-white/5 px-3 py-2"><p className="text-[11px] text-slate-400">Received</p><p className="font-semibold tabular-nums">{money(paidTotal / 100)}</p></div>
+              <div className={clsx('rounded-xl px-3 py-2', short ? 'bg-red-500/15' : 'bg-emerald-500/15')}>
+                <p className={clsx('text-[11px]', short ? 'text-red-300' : 'text-emerald-300')}>{short ? 'Still to pay' : 'Change'}</p>
+                <p className={clsx('font-bold tabular-nums', short ? 'text-red-200' : 'text-emerald-200')}>{money((short ? remaining : Math.max(0, change)) / 100)}</p>
+              </div>
+            </div>
           </div>
-        ))}
-        {pays.some((p) => p.method === 'CASH') && (
-          <div className="flex flex-wrap gap-2">
-            {quick.map((v) => (
-              <Button key={v} size="sm" variant="secondary" onClick={() => setPays(pays.map((p) => (p.method === 'CASH' ? { ...p, amount: (v - paidNonCash / 100).toFixed(2) } : p)))}>{money(v)}</Button>
+          <div>
+            <p className="label">Payment method</p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {METHODS.map(({ m, icon: Icon }) => {
+                const used = pays.some((p) => p.method === m);
+                return (
+                  <button key={m} onClick={() => select(m)} className={clsx('flex flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-semibold transition',
+                    current === m ? 'border-brand-600 bg-brand-600 text-white shadow-sm' : used ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50')}>
+                    <Icon className="h-5 w-5" />{METHOD_LABEL[m].replace('Bank transfer', 'Bank')}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {pays.length > 1 && (
+            <ul className="space-y-1.5 rounded-xl border border-slate-200 p-2 text-sm">
+              {pays.map((p) => (
+                <li key={p.method} className={clsx('flex items-center gap-2 rounded-lg px-2 py-1.5', p.method === current && 'bg-brand-50')}>
+                  <button className="flex-1 text-left font-medium" onClick={() => { setCurrent(p.method); setFresh(true); }}>{METHOD_LABEL[p.method]}</button>
+                  <span className="tabular-nums">{money(p.amount)}</span>
+                  <button onClick={() => { setPays(pays.filter((x) => x.method !== p.method)); if (current === p.method) setCurrent(pays.find((x) => x.method !== p.method)?.method ?? 'CASH'); }} className="rounded p-1 text-slate-400 hover:text-red-600" aria-label={`Remove ${METHOD_LABEL[p.method]}`}><X className="h-4 w-4" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {cur && cur.method !== 'CASH' && cur.method !== 'CREDIT' && (
+            <Input label={`${METHOD_LABEL[cur.method]} reference (optional)`} placeholder="Approval code / transaction ID" value={cur.reference} onChange={(e) => setPays(pays.map((p) => (p.method === current ? { ...p, reference: e.target.value } : p)))} />
+          )}
+          {needsCustomer && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">Add the customer's phone number to sell on account.</p>}
+          {overNonCash && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">Card, QR, bank and account amounts are more than the total.</p>}
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-medium text-slate-500">{current === 'CASH' ? 'Cash received' : `${METHOD_LABEL[current]} amount`}</p>
+            <p className={clsx('text-right text-3xl font-bold tabular-nums', fresh ? 'text-slate-400' : 'text-slate-900')}>{money(cur?.amount ?? 0)}</p>
+          </div>
+          {current === 'CASH' && (
+            <div className="grid grid-cols-4 gap-2">
+              {quick.map((v) => (
+                <button key={v} onClick={() => { setAmount(v.toFixed(2)); setFresh(true); }} className="h-10 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold tabular-nums text-emerald-800 transition hover:bg-emerald-100 active:scale-95">
+                  {v === total / 100 ? 'Exact' : v.toLocaleString('en-LK')}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-2">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((k) => (
+              <button key={k} onClick={() => key(k)} className="grid h-12 place-items-center rounded-xl border border-slate-200 bg-white text-xl md:h-14 font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:scale-95 active:bg-slate-100" aria-label={k === 'back' ? 'Backspace' : k}>
+                {k === 'back' ? <Delete className="h-6 w-6" /> : k}
+              </button>
             ))}
           </div>
-        )}
-        <div className="rounded-lg bg-slate-50 p-3 text-sm">
-          {short && <p className="font-semibold text-red-700">Short by {money((cashDue - cash) / 100)}</p>}
-          {overNonCash && <p className="font-semibold text-red-700">Card / QR / transfer / credit amounts exceed the total</p>}
-          {needsCustomer && <p className="font-semibold text-red-700">Add the customer's phone number to sell on account</p>}
-          {!short && !overNonCash && <p className="flex items-baseline justify-between"><span>Change due</span><span className="text-2xl font-bold tabular-nums text-emerald-700">{money(Math.max(0, change) / 100)}</span></p>}
         </div>
       </div>
     </Modal>

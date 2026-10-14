@@ -44,7 +44,7 @@ export function AdjustmentForm({ productId, onDone }: { productId?: number; onDo
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      {!productId && (product ? <p className="text-sm">Product: <b>{product.name}</b> ({product.qtyOnHand} on hand) <button type="button" className="text-brand-700 underline" onClick={() => setProduct(null)}>change</button></p> : <ProductPicker onPick={setProduct} />)}
+      {!productId && (product ? <p className="text-sm">Product: <b>{product.name}</b> ({product.qtyOnHand} on hand) <button type="button" className="link" onClick={() => setProduct(null)}>change</button></p> : <ProductPicker onPick={setProduct} />)}
       <Select label="Type" value={type} onChange={(e) => setType(e.target.value)}>
         <option value="DAMAGED">Damaged (remove from stock)</option>
         <option value="LOST">Lost / missing (remove)</option>
@@ -103,7 +103,7 @@ export default function StockPage() {
               { key: 'a', header: 'Balance', num: true, render: (m) => m.qtyAfter },
               ...(can('products.view_cost') ? [{ key: 'uc', header: 'Unit cost', num: true, render: (m: Move) => money(m.unitCost) }] : []),
               { key: 'u', header: 'By', render: (m) => m.user ?? '-' },
-              { key: 'r', header: 'Reference', render: (m) => <span className="text-xs">{m.refType === 'SALE' && m.refId ? <Link className="text-brand-700 underline" to={`/sales/${m.refId}`}>Sale #{m.refId}</Link> : m.refType ?? ''} {m.reason}</span> },
+              { key: 'r', header: 'Reference', render: (m) => <span className="text-xs">{m.refType === 'SALE' && m.refId ? <Link className="link" to={`/sales/${m.refId}`}>Sale #{m.refId}</Link> : m.refType ?? ''} {m.reason}</span> },
             ]} />
           )}
         </Card>

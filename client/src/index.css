@@ -3,24 +3,38 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-tap-highlight-color: transparent; }
-  body { @apply bg-slate-50 text-slate-800 antialiased; }
-  :focus-visible { @apply outline-none ring-2 ring-brand-500 ring-offset-1; }
-  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
+  html { -webkit-tap-highlight-color: transparent; text-rendering: optimizeLegibility; }
+  html, body { @apply bg-[#f3f5f9]; }
+  body { @apply text-slate-800 antialiased; font-feature-settings: 'cv11', 'ss01'; }
+  :focus-visible { @apply outline-none ring-2 ring-brand-500/60 ring-offset-1; }
+  input[type='number']::-webkit-inner-spin-button { opacity: 0.35; }
+  ::selection { @apply bg-brand-200; }
+  * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 }
 
 @layer components {
   .input {
-    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm
-      placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30
-      disabled:bg-slate-100 disabled:text-slate-500;
+    @apply block h-10 w-full rounded-lg border border-slate-300/90 bg-white px-3 text-sm text-slate-900 shadow-sm transition
+      placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15
+      disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
   }
-  .input-error { @apply border-red-400 focus:border-red-500 focus:ring-red-500/30; }
-  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500; }
-  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
-  .th { @apply whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
-  .td { @apply px-3 py-2 align-middle text-sm; }
-  .num { @apply text-right tabular-nums; }
+  textarea.input { @apply h-auto py-2; }
+  select.input { @apply pr-8; }
+  .input-error { @apply border-red-400 focus:border-red-500 focus:ring-red-500/15; }
+  .label { @apply mb-1.5 block text-xs font-medium text-slate-600; }
+  .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
+  .th { @apply whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
+  .td { @apply px-4 py-3 align-middle text-sm; }
+  .num { @apply whitespace-nowrap text-right tabular-nums; }
+  .link { @apply font-medium text-brand-600 hover:text-brand-800 hover:underline; }
+  .kbd { @apply rounded border border-slate-300 bg-white px-1.5 py-0.5 font-sans text-[11px] font-semibold text-slate-600 shadow-sm; }
+  .chip { @apply inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium transition; }
+}
+
+@layer utilities {
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* ---------- printing ---------- */

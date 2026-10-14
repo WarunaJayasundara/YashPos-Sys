@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Plus, Upload } from 'lucide-react';
+import { ChevronRight, Download, Plus, Search, SlidersHorizontal, Upload } from 'lucide-react';
 import { api, ApiError, errorText, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { money } from '../lib/format';
 import type { Named, Product } from '../lib/types';
-import { Badge, Button, Card, ErrorBox, Input, Loading, Modal, PageHeader, Select, STOCK_BADGE } from '../components/ui';
+import { Avatar, Badge, Button, Card, ErrorBox, Loading, Modal, PageHeader, Select, STOCK_BADGE } from '../components/ui';
+import clsx from 'clsx';
 import { DataTable } from '../components/Table';
 import { ProductForm } from '../components/ProductForm';
 import { useToast } from '../components/toast';
@@ -22,6 +23,7 @@ export default function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
   const status = sp.get('status') ?? '';
   const categoryId = sp.get('categoryId') ?? '';
   const brandId = sp.get('brandId') ?? '';
@@ -42,13 +44,20 @@ export default function ProductsPage() {
   return (
     <div>
       <PageHeader title="Products" subtitle={q.data ? `${q.data.total} product(s)` : undefined} actions={can('products.manage') && <>
-        <Button variant="secondary" onClick={exportCsv}><Download className="h-4 w-4" />Export CSV</Button>
-        <Button variant="secondary" onClick={() => setImportOpen(true)}><Upload className="h-4 w-4" />Import</Button>
+        <Button variant="secondary" onClick={exportCsv} aria-label="Export CSV"><Download className="h-4 w-4" /><span className="hidden sm:inline">Export</span></Button>
+        <Button variant="secondary" onClick={() => setImportOpen(true)} aria-label="Import CSV"><Upload className="h-4 w-4" /><span className="hidden sm:inline">Import</span></Button>
         <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New product</Button>
       </>} />
       <Card>
-        <div className="grid gap-2 border-b border-slate-100 p-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Input placeholder="Search name, SKU, barcode, model..." value={term} onChange={(e) => setTerm(e.target.value)} aria-label="Search products" wrapClass="lg:col-span-2" />
+        <div className="grid gap-2 border-b border-slate-100 p-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="flex gap-2 sm:col-span-2 xl:col-span-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input className="input pl-9" placeholder="Search name, SKU, barcode, model" value={term} onChange={(e) => setTerm(e.target.value)} aria-label="Search products" />
+            </div>
+            <Button variant={showFilters || categoryId || brandId || status ? 'soft' : 'secondary'} className="sm:hidden" onClick={() => setShowFilters((f) => !f)} aria-label="Filters" aria-expanded={showFilters}><SlidersHorizontal className="h-4 w-4" /></Button>
+          </div>
+          <div className={clsx('contents', !showFilters && 'max-sm:hidden')}>
           <Select value={categoryId} onChange={(e) => setParam('categoryId', e.target.value)} aria-label="Category">
             <option value="">All categories</option>
             {cats.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -65,6 +74,7 @@ export default function ProductsPage() {
               <option value="true">Active</option><option value="false">Inactive</option><option value="all">All</option>
             </Select>
           </div>
+          </div>
         </div>
         {q.isLoading ? <Loading /> : q.error ? <div className="p-3"><ErrorBox error={q.error} onRetry={() => q.refetch()} /></div> : (
           <>
@@ -73,15 +83,29 @@ export default function ProductsPage() {
               rowKey={(p) => p.id}
               onRowClick={(p) => nav(`/products/${p.id}`)}
               empty="No products found"
+              renderMobile={(p) => (
+                <div className="flex items-center gap-3">
+                  <Avatar name={p.name} src={p.imageUrl} className="h-12 w-12 shrink-0 rounded-xl text-sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{p.name}</p>
+                      <p className="whitespace-nowrap text-sm font-bold tabular-nums text-slate-900">{money(p.sellingPrice)}</p>
+                    </div>
+                    <p className="truncate text-xs text-slate-500">{p.sku}{showCost ? ` · cost ${money(p.avgCost)}${p.marginPercent != null ? ` (${p.marginPercent}%)` : ''}` : p.brand ? ` · ${p.brand}` : ''}</p>
+                    <div className="mt-1.5 flex items-center gap-2"><Badge dot tone={STOCK_BADGE[p.stockStatus].tone}>{p.qtyAvailable} in stock</Badge>{!p.isActive && <Badge>Inactive</Badge>}</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                </div>
+              )}
               columns={[
-                { key: 'name', header: 'Product', primary: true, render: (p) => <div><span className="font-medium">{p.name}</span>{!p.isActive && <Badge className="ml-2">Inactive</Badge>}<div className="text-xs font-normal text-slate-500">{p.sku}{p.compatibility ? ` · ${p.compatibility}` : ''}</div></div> },
+                { key: 'name', header: 'Product', primary: true, render: (p) => <div className="flex items-center gap-3"><Avatar name={p.name} src={p.imageUrl} className="h-9 w-9 shrink-0 rounded-lg text-xs" /><div className="min-w-0"><span className="font-medium text-slate-900">{p.name}</span>{!p.isActive && <Badge className="ml-2">Inactive</Badge>}<div className="text-xs font-normal text-slate-500">{p.sku}{p.compatibility ? ` · ${p.compatibility}` : ''}</div></div></div> },
                 { key: 'cat', header: 'Category', render: (p) => p.category, hideMobile: true },
                 { key: 'brand', header: 'Brand', render: (p) => p.brand ?? '-', hideMobile: true },
                 ...(showCost ? [{ key: 'cost', header: 'Avg cost', num: true, render: (p: Product) => money(p.avgCost) }] : []),
                 { key: 'price', header: 'Selling', num: true, render: (p) => money(p.sellingPrice) },
                 ...(showCost ? [{ key: 'margin', header: 'Margin', num: true, render: (p: Product) => (p.marginPercent == null ? '-' : `${p.marginPercent}%`) }] : []),
                 { key: 'qty', header: 'Available', num: true, render: (p) => <span className="font-semibold">{p.qtyAvailable}</span> },
-                { key: 'st', header: 'Status', render: (p) => <Badge tone={STOCK_BADGE[p.stockStatus].tone}>{STOCK_BADGE[p.stockStatus].label}</Badge> },
+                { key: 'st', header: 'Status', render: (p) => <Badge dot tone={STOCK_BADGE[p.stockStatus].tone}>{STOCK_BADGE[p.stockStatus].label}</Badge> },
               ]}
             />
             {q.data!.total > 50 && (
@@ -127,7 +151,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
     <Modal open={open} onClose={onClose} title="Import products from CSV" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} disabled={!file} onClick={submit}>Import</Button></>}>
       <div className="space-y-3 text-sm">
         <p>Rows with an existing SKU update that product (price changes go into price history). New SKUs are created with their opening stock. If any row is invalid, nothing is imported.</p>
-        <a className="text-brand-700 underline" href={`data:text/csv;charset=utf-8,${encodeURIComponent(template)}`} download="products-template.csv">Download template</a>
+        <a className="link" href={`data:text/csv;charset=utf-8,${encodeURIComponent(template)}`} download="products-template.csv">Download template</a>
         <input type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="CSV file" />
         {error && <p className="text-red-700">{error}</p>}
         {problems.length > 0 && <ul className="max-h-40 overflow-y-auto rounded bg-red-50 p-2 text-xs text-red-800">{problems.map((p, i) => <li key={i}>Row {p.row}: {p.message}</li>)}</ul>}

@@ -53,7 +53,7 @@ export default function ProductDetailPage() {
         </>}
       </div>
       {p.lifetime && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <Stat label="Units received" value={int(p.lifetime.unitsReceived)} />
           <Stat label="Units sold (net)" value={int(p.lifetime.unitsSold)} />
           <Stat label="Net revenue" value={money(p.lifetime.netRevenue)} />
@@ -61,7 +61,7 @@ export default function ProductDetailPage() {
           <Stat label="Potential profit on stock" value={money(p.lifetime.potentialProfitOnStock)} sub="At current price and avg cost" />
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Card title="Details">
           <dl className="grid grid-cols-2 gap-2 p-4 text-sm">
             {[['Compatible', p.compatibility], ['Colour', p.color], ['Size', p.size], ['Connector', p.connectorType], ['Warranty', p.warrantyMonths ? `${p.warrantyMonths} months` : 'None'], ['Supplier', p.supplier], ['Max stock', p.maxStockLevel], ['Updated', dateTime(p.updatedAt)]]
@@ -74,11 +74,11 @@ export default function ProductDetailPage() {
           {p.variants.length > 0 && (
             <div className="border-t border-slate-100 p-4 text-sm">
               <p className="label">Other variants</p>
-              <ul className="space-y-1">{p.variants.map((v) => <li key={v.id}><Link className="text-brand-700 hover:underline" to={`/products/${v.id}`}>{v.name}</Link> <span className="text-xs text-slate-500">{v.qtyOnHand} in stock</span></li>)}</ul>
+              <ul className="space-y-1">{p.variants.map((v) => <li key={v.id}><Link className="link" to={`/products/${v.id}`}>{v.name}</Link> <span className="text-xs text-slate-500">{v.qtyOnHand} in stock</span></li>)}</ul>
             </div>
           )}
         </Card>
-        <Card title="Stock movements" className="lg:col-span-2">
+        <Card title="Stock movements" className="xl:col-span-2">
           {!can('stock.view') ? <p className="p-4 text-sm text-slate-500">You cannot view stock history.</p> : moves.isLoading ? <Loading /> : (
             <div className="max-h-96 overflow-auto">
               <table className="min-w-full text-sm">
@@ -91,7 +91,7 @@ export default function ProductDetailPage() {
                       <td className={`td num font-semibold ${m.qtyChange < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{m.qtyChange > 0 ? `+${m.qtyChange}` : m.qtyChange}</td>
                       <td className="td num">{m.qtyAfter}</td>
                       {showCost && <td className="td num">{money(m.unitCost)}</td>}
-                      <td className="td text-xs text-slate-500">{m.refType === 'SALE' && m.refId ? <Link className="text-brand-700 underline" to={`/sales/${m.refId}`}>Sale</Link> : m.refType}{m.reason ? ` ${m.reason}` : ''}</td>
+                      <td className="td text-xs text-slate-500">{m.refType === 'SALE' && m.refId ? <Link className="link" to={`/sales/${m.refId}`}>Sale</Link> : m.refType}{m.reason ? ` ${m.reason}` : ''}</td>
                     </tr>
                   ))}
                 </tbody>

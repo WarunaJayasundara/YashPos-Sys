@@ -68,8 +68,8 @@ export default function SaleDetailPage() {
       {s.status === 'VOIDED' && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">Voided {s.voidedAt && dateTime(s.voidedAt)}: {s.voidReason}. Stock was restored. The record is kept for audit.</p>}
       {s.offlineCreatedAt && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Recorded offline at {dateTime(s.offlineCreatedAt)} and synced later.</p>}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card title="Items" className="lg:col-span-2">
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card title="Items" className="xl:col-span-2">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50"><tr>
@@ -105,7 +105,7 @@ export default function SaleDetailPage() {
               <Row k="Cost of goods" v={money(s.totalCost)} />
               <Row k="Gross profit (ex tax)" v={money(net - toNum(s.totalCost))} bold />
             </>}
-            {(s.customerName || s.customerPhone) && <p className="pt-2 text-slate-600">Customer: {[s.customerName, s.customerPhone].filter(Boolean).join(' · ')}{s.customerId && <> · <Link className="text-brand-700 underline" to={`/customers?id=${s.customerId}`}>account</Link></>}</p>}
+            {(s.customerName || s.customerPhone) && <p className="pt-2 text-slate-600">Customer: {[s.customerName, s.customerPhone].filter(Boolean).join(' · ')}{s.customerId && <> · <Link className="link" to={`/customers?id=${s.customerId}`}>account</Link></>}</p>}
           </dl>
         </Card>
       </div>

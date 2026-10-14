@@ -51,8 +51,11 @@ given (with approver), expenses and net profit, cash reconciliation, best seller
 **PWA / offline**: installable app (manifest, icons, service worker for the app shell), connection banner, last sync
 time, cost-free cached catalogue, offline sale queue with pending/conflict states, automatic sync, reconciliation page.
 
-**Mobile**: responsive layouts (sidebar on desktop, drawer + bottom bar on phones, tables become cards), touch-size
-controls, bottom-sheet dialogs.
+**Mobile and design**: modern POS layout (tap-to-add product tiles with category chips, live stock badges, a bill panel,
+on-screen cash keypad with quick amounts, large change display), grouped dark sidebar that collapses to icons (and does
+so automatically on the till screen), top bar with connection status, phone bottom bar with a raised "Sell" button,
+bill as a slide-up sheet on phones, list rows with product thumbnails on phones, collapsible filters, skeleton loading,
+Inter typeface.
 
 ## How it was verified
 
@@ -79,7 +82,10 @@ In the browser (development servers, demo data):
   receipt opened. Done by dispatching real input/keyboard events because the browser pane was not visible on screen.
 - Print view: 80 mm receipt measured 72 mm wide, 58 mm measured 48 mm, A4 measured 186 mm; `@page` sizes correct;
   PDF endpoint returned a valid PDF.
-- 23 routes at 375 px phone width: no horizontal page overflow, every page loaded its data without error.
+- 23 routes at 375 px (phone), 768 px (tablet) and ~1100 px (laptop): no horizontal page overflow, every page loaded its
+  data without error. The sign-in page was checked separately at phone and desktop size.
+- Screenshots reviewed of the dashboard, POS (grid, bill, payment keypad, phone bill sheet and payment), products,
+  sales history, sale detail and sign-in at phone, tablet and desktop sizes.
 - Signed in as cashier: landed on POS, navigation limited, no cost or margin columns, another cashier's sale refused,
   no financial reports.
 - Production mode (`npm run build`, `node dist/index.js`): SPA routes, service worker, Swagger docs and login served
@@ -87,8 +93,6 @@ In the browser (development servers, demo data):
 
 **Not verified** (be aware):
 - Nothing was printed on a physical thermal printer; layouts were checked by measurement only.
-- Screens were checked by DOM inspection and measurements; screenshots could not be taken in this environment, so
-  the visual look was not eyeballed.
 - PWA installation and service-worker offline behaviour were not tested on a real phone or over HTTPS (the queue
   logic itself is unit-tested).
 - The Swagger UI page returned HTTP 200 but its rendering was not looked at.

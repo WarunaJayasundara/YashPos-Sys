@@ -109,7 +109,7 @@ function CustomerDetail({ id, onClose }: { id: number; onClose: () => void }) {
           <div><p className="label">Purchase history</p>
             <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border">{c.sales.length ? c.sales.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                <Link className="text-brand-700 underline" to={`/sales/${s.id}`}>{s.invoiceNumber}</Link><span className="text-slate-500">{dateTime(s.createdAt)}</span>
+                <Link className="link" to={`/sales/${s.id}`}>{s.invoiceNumber}</Link><span className="text-slate-500">{dateTime(s.createdAt)}</span>
                 <Badge tone={SALE_STATUS[s.status].tone}>{SALE_STATUS[s.status].label}</Badge>
                 <span className="tabular-nums">{money(s.total)}{toNum(s.balanceDue) > 0 && <span className="text-red-700"> (on account {money(s.balanceDue)})</span>}</span>
               </li>

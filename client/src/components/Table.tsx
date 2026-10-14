@@ -15,8 +15,10 @@ export interface Column<T> {
 }
 
 /** Table on wide screens, stacked cards on phones. */
-export function DataTable<T>({ rows, columns, rowKey, onRowClick, empty = 'Nothing to show', footer }: {
+export function DataTable<T>({ rows, columns, rowKey, onRowClick, empty = 'Nothing to show', footer, renderMobile }: {
   rows: T[]; columns: Column<T>[]; rowKey: (r: T) => string | number; onRowClick?: (r: T) => void; empty?: string; footer?: ReactNode;
+  /** custom phone row; defaults to a label/value card */
+  renderMobile?: (r: T) => ReactNode;
 }) {
   if (!rows.length) return <Empty title={empty} />;
   const primary = columns.find((c) => c.primary) ?? columns[0];
@@ -24,12 +26,12 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, empty = 'Nothi
     <>
       <div className="hidden overflow-x-auto md:block">
         <table className="min-w-full divide-y divide-slate-100">
-          <thead className="bg-slate-50">
+          <thead className="border-b border-slate-200/80 bg-slate-50/80">
             <tr>{columns.map((c) => <th key={c.key} className={clsx('th', c.num && 'text-right', c.className)}>{c.header}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((r) => (
-              <tr key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={clsx(onRowClick && 'cursor-pointer hover:bg-brand-50/50')}>
+              <tr key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={clsx('transition-colors', onRowClick ? 'cursor-pointer hover:bg-brand-50/40' : 'hover:bg-slate-50/60')}>
                 {columns.map((c) => <td key={c.key} className={clsx('td', c.num && 'num', c.className)}>{c.render(r)}</td>)}
               </tr>
             ))}
@@ -45,10 +47,11 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, empty = 'Nothi
               tabIndex={onRowClick ? 0 : undefined}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
               onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(r) : undefined}
-              className={clsx('px-4 py-3', onRowClick && 'active:bg-slate-50')}
+              className={clsx('px-4 py-3.5', onRowClick && 'active:bg-slate-50')}
             >
-              <div className="mb-1 text-sm font-semibold text-slate-900">{primary.render(r)}</div>
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              {renderMobile ? renderMobile(r) : <>
+              <div className="mb-1.5 text-sm font-semibold text-slate-900">{primary.render(r)}</div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                 {columns.filter((c) => c !== primary && !c.hideMobile).map((c) => (
                   <div key={c.key} className="flex min-w-0 flex-col">
                     <dt className="text-slate-400">{c.header}</dt>
@@ -56,6 +59,7 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, empty = 'Nothi
                   </div>
                 ))}
               </dl>
+              </>}
             </div>
           </li>
         ))}

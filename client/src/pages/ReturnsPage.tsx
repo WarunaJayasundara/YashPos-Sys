@@ -137,7 +137,7 @@ function ReturnList() {
         <DataTable rows={q.data!} rowKey={(r) => r.id} empty="No returns in this period" columns={[
           { key: 'n', header: 'Return', primary: true, render: (r) => <span className="font-medium">{r.returnNumber}</span> },
           { key: 'd', header: 'When', render: (r) => dateTime(r.createdAt) },
-          { key: 's', header: 'Sale', render: (r) => <Link className="text-brand-700 underline" to={`/sales/${r.saleId}`}>{r.sale.invoiceNumber}</Link> },
+          { key: 's', header: 'Sale', render: (r) => <Link className="link" to={`/sales/${r.saleId}`}>{r.sale.invoiceNumber}</Link> },
           { key: 'i', header: 'Items', render: (r) => r.items.map((i) => `${i.qty} x ${i.saleItem.productName}${i.restock ? '' : ' (damaged)'}`).join(', ') },
           { key: 'r', header: 'Reason', render: (r) => r.reason, hideMobile: true },
           { key: 't', header: 'Type', render: (r) => r.type.toLowerCase() },

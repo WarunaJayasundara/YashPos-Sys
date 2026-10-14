@@ -71,7 +71,7 @@ export default function PurchaseDetailPage() {
           </table>
         </div>
       </Card>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Goods received">
           {po.receipts.length ? <ul className="divide-y divide-slate-100 text-sm">{po.receipts.map((r) => (
             <li key={r.id} className="px-4 py-2.5"><b>{r.receiptNumber}</b> · {dateTime(r.receivedAt)}{toNum(r.additionalCost) > 0 && ` · extra cost ${money(r.additionalCost)}`}

@@ -7,6 +7,7 @@ import App from './App';
 import { AuthProvider } from './lib/auth';
 import { ToastProvider } from './components/toast';
 import { ApiError } from './lib/api';
+import '@fontsource-variable/inter';
 import './index.css';
 
 registerSW({ immediate: true });

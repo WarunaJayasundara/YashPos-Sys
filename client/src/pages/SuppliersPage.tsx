@@ -91,7 +91,7 @@ function SupplierDetail({ id, onClose, onEdit }: { id: number; onClose: () => vo
           </div>
           <div><p className="label">Purchases</p>
             <ul className="divide-y divide-slate-100 rounded-lg border">{s.purchases.length ? s.purchases.map((p) => (
-              <li key={p.id} className="flex flex-wrap justify-between gap-2 px-3 py-2"><Link className="text-brand-700 underline" to={`/purchases/${p.id}`}>{p.poNumber}</Link><span>{dateOnly(p.purchaseDate)}</span><Badge tone={PO_STATUS[p.status].tone}>{PO_STATUS[p.status].label}</Badge><span className="tabular-nums">{money(p.invoiceTotal)} (bal. {money(toNum(p.invoiceTotal) - toNum(p.amountPaid))})</span></li>
+              <li key={p.id} className="flex flex-wrap justify-between gap-2 px-3 py-2"><Link className="link" to={`/purchases/${p.id}`}>{p.poNumber}</Link><span>{dateOnly(p.purchaseDate)}</span><Badge tone={PO_STATUS[p.status].tone}>{PO_STATUS[p.status].label}</Badge><span className="tabular-nums">{money(p.invoiceTotal)} (bal. {money(toNum(p.invoiceTotal) - toNum(p.amountPaid))})</span></li>
             )) : <li className="p-3 text-slate-500">None</li>}</ul>
           </div>
           <div><p className="label">Payments</p>

@@ -7,14 +7,15 @@
    React SPA ── service worker (app shell cache) ── IndexedDB (product catalogue, offline sales queue)
         │  same-origin HTTPS, session cookie, X-Requested-With header
         ▼
- Node.js / Express API  ── Zod validation ── permission checks ── services (inventory, sales, returns, purchases)
-        │  Prisma (parameterised queries, transactions)
+ Laravel 12 (PHP 8.2+) API ── validation ── permission checks ── services (inventory, sales, returns, purchases)
+        │  query builder (parameterised queries, transactions)
         ▼
  MySQL / MariaDB
 ```
 
-In production one Node process serves both the API (`/api/*`) and the built PWA, so the session cookie is first-party
-and `SameSite=Strict` works. In development Vite (port 5173) proxies `/api` to the API (port 4000).
+In production Laravel serves both the API (`/api/*`) and the built PWA from `laravel/public`, so the session cookie is
+first-party and `SameSite=Strict` works. On cPanel, Apache serves the built files directly and sends everything else to
+Laravel's `index.php`. In development Vite (port 5173) proxies `/api` to `php artisan serve` (port 8000).
 
 ## Costing method: weighted average cost
 
@@ -136,8 +137,8 @@ bcrypt password hashing (cost 12); server-side sessions (random 256-bit token, o
 SameSite=Strict + Secure (when `COOKIE_SECURE=1`) cookie, sliding 12-hour expiry; sessions are deleted on logout,
 password change, role change or deactivation. CSRF: state-changing requests require `X-Requested-With: yash-pos`
 (not sendable cross-site without a CORS preflight, which the API never grants) on top of SameSite=Strict. Login rate
-limiting per account+IP and per IP. Zod validation on every input; Prisma parameterised queries only. Helmet security
-headers and CSP. Totals, discounts, payments and change are always recalculated on the server. CSV exports escape
+limiting per account+IP and per IP. Laravel validation on every input; parameterised queries only. Security headers and
+CSP on every response (`SecurityHeaders` middleware and `public/.htaccess`). Totals, discounts, payments and change are always recalculated on the server. CSV exports escape
 formula injection. Uploads are type- and size-limited with random file names. Secrets only in environment variables.
 Every sensitive action writes `audit_logs` (who, what, when, IP, details).
 

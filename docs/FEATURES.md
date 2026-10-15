@@ -63,13 +63,13 @@ Inter typeface.
 ## How it was verified
 
 Automated (all passing at the time of writing):
-- **API, 50 tests** (`server/tests`), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
+- **API, 60 PHP tests** (`laravel/tests/Feature`, PHPUnit), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
   rate limiting, session revocation, cashier/manager restrictions on cost data and owner-only reports; product
   validation (duplicate SKU, barcode check digit, negative price, min > selling), price history, stock filters,
   price-change approval; purchase orders not changing stock, partial receipt with damaged units, freight allocation and
   weighted average cost, over-receiving refused, supplier payments and overpayment; stock adjustments and approvals;
   server-side totals ignoring client totals, invalid and zero quantities, insufficient stock, all-or-nothing multi-line
-  sales, **5 concurrent sales against 2 units (exactly 2 succeed)**, duplicate submissions, sequential unique invoice
+  sales, selling past the last unit refused, duplicate submissions, sequential unique invoice
   numbers, discount limits and supervisor approval, minimum price, split/short/credit payments, historical cost kept
   after a new purchase price, own-sales visibility, audit entries, invoice snapshots after price changes, PDF output;
   partial and repeated returns, damaged returns, cashier return approval, void; gross profit with discounts and
@@ -77,7 +77,17 @@ Automated (all passing at the time of writing):
 - **Client, 17 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
   the same idempotency key, network still down, stock conflict kept for reconciliation, only the original cashier can
   sync, discard restores local stock), 80/58 mm and A4 receipt content, responsive table.
-- Type checks (`tsc`) and production builds for both packages.
+- Type check (`tsc`) and production build of the client.
+- **Real concurrency on Laravel**: five separate PHP processes on one database. Eight buyers for the last 2 units at
+  the same moment, three times: exactly 2 sold each time, stock never below 0. The same sale sent five times at once:
+  one sale. Twenty sales at once: twenty unique, gap-free invoice numbers.
+- **Same answers as version 1**: every read endpoint and all 20 reports were compared field by field against the
+  Node.js version on the same database, as owner, manager and cashier: identical (apart from the order of tied
+  best-sellers, which is now fixed).
+- **Shared-hosting rehearsal**: the upload zip was extracted into an empty folder, set up from the browser with
+  `/install`, and served by Apache with PHP 8.3 (CGI) using the included `.htaccess` files, both with the document root
+  on `public` and with everything in `public_html`: sign-in, sale, bill edit, PDF and CSV worked; `.env`, `vendor`
+  and app files were never served; a PHP file planted in `uploads` was refused.
 
 In the browser (development servers, demo data):
 - Signed in as owner; dashboard rendered with real computed figures.
@@ -91,14 +101,15 @@ In the browser (development servers, demo data):
   sales history, sale detail and sign-in at phone, tablet and desktop sizes.
 - Signed in as cashier: landed on POS, navigation limited, no cost or margin columns, another cashier's sale refused,
   no financial reports.
-- Production mode (`npm run build`, `node dist/index.js`): SPA routes, service worker, Swagger docs and login served
-  from one origin with security headers.
+- Production mode (`npm run build`, served by Laravel): all 24 screens loaded with data, POS sale, paper choice, bill
+  preview and edit, A4 PDF (layout checked), photo, logo and receipt uploads.
 
 **Not verified** (be aware):
 - Nothing was printed on a physical thermal printer; layouts were checked by measurement only.
 - PWA installation and service-worker offline behaviour were not tested on a real phone or over HTTPS (the queue
   logic itself is unit-tested).
-- The Swagger UI page returned HTTP 200 but its rendering was not looked at.
+- Not yet run on a real Serverbyt account (the rehearsal used Apache + PHP 8.3 locally; Serverbyt may differ slightly).
+- Tested with PHP 8.3; the code and dependencies target PHP 8.2 but were not run on 8.2 itself.
 - Not tested on a real MySQL 8 server (developed and tested on MariaDB 10.4).
 
 ## Limitations and decisions
@@ -119,7 +130,8 @@ In the browser (development servers, demo data):
 - **Excel export** is CSV with a UTF-8 BOM (opens in Excel); there is no native `.xlsx` writer.
 - **Sinhala**: the invoice language setting exists but only English templates are implemented.
 - **Single branch** only; no branch transfers.
-- **Rate limiting** is in-memory (correct for one server process; use a shared store if you run several).
+- **Rate limiting** uses Laravel's cache (file cache by default, shared by all PHP processes on the server).
+- **Demo data**: version 2 has no demo catalogue seeder; a new install starts empty (the owner adds products).
 - `npm audit`: two moderate React Router advisories remain (open redirect via backslash paths in `<Link>`, and SSR
   hydration). This app has no SSR and never navigates to user-supplied URLs, so they do not apply; upgrading to React
   Router 7 removes them. Other advisories are in development-only tools (Vite/esbuild dev server, Vitest); do not

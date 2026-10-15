@@ -53,6 +53,7 @@ export default function App() {
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
+        <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/print/:id" element={<Guard perms={['sales.view_own', 'sales.view_all', 'sales.create']}><PrintPage /></Guard>} />
         <Route element={<Layout />}>
           <Route index element={<Home />} />

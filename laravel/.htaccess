@@ -1,0 +1,9 @@
+# Fallback when the whole project sits in public_html (document root not set to /public):
+# everything is served from public/, and nothing else in this folder is reachable.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+<IfModule !mod_rewrite.c>
+    Require all denied
+</IfModule>

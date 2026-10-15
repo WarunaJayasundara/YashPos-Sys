@@ -27,13 +27,14 @@ export default defineConfig({
         // app shell only; API responses are never cached by the service worker
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/install/],
       },
     }),
   ],
   server: {
     port: 5173,
-    proxy: { '/api': 'http://localhost:4000', '/uploads': 'http://localhost:4000' },
+    // the Laravel API (php artisan serve)
+    proxy: { '/api': 'http://localhost:8000', '/uploads': 'http://localhost:8000' },
   },
   test: { environment: 'jsdom', setupFiles: ['./src/test-setup.ts'] },
 });

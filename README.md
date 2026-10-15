@@ -15,6 +15,7 @@ More documentation:
 - [docs/DESIGN.md](docs/DESIGN.md): architecture, database tables, costing and profit rules, concurrency, offline design, security
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): production setup, HTTPS, database backup and restore
 - [docs/PRINTING.md](docs/PRINTING.md): thermal / A4 printer setup and troubleshooting
+- [docs/CHEAP_HOSTING.md](docs/CHEAP_HOSTING.md): your own domain on a ~$6/month server, set up with one command (recommended for real use)
 - [docs/FREE_HOSTING.md](docs/FREE_HOSTING.md): free ways to put it online (Render + Aiven, Oracle Cloud, Cloudflare Tunnel)
 - [docs/FEATURES.md](docs/FEATURES.md): what is finished, what was verified, and known limitations
 - API reference: `http://localhost:4000/api/docs` (Swagger UI) or [server/openapi.yaml](server/openapi.yaml)

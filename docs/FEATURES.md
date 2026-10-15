@@ -74,7 +74,7 @@ Automated (all passing at the time of writing):
   after a new purchase price, own-sales visibility, audit entries, invoice snapshots after price changes, PDF output;
   partial and repeated returns, damaged returns, cashier return approval, void; gross profit with discounts and
   returns, report date filters, net profit, cash closing excluding card payments, CSV export.
-- **Client, 15 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
+- **Client, 17 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
   the same idempotency key, network still down, stock conflict kept for reconciliation, only the original cashier can
   sync, discard restores local stock), 80/58 mm and A4 receipt content, responsive table.
 - Type checks (`tsc`) and production builds for both packages.

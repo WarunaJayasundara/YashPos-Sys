@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Banknote, CheckCircle2, ChevronDown, ChevronUp, CloudOff, CreditCard, Delete, FileDown, Landmark, Minus, NotebookPen, Percent, Plus, Printer,
+  Banknote, CheckCircle2, ChevronDown, ChevronUp, CloudOff, CreditCard, Delete, Landmark, Minus, NotebookPen, Percent, Plus,
   QrCode, ScanBarcode, Search, ShoppingBag, Trash2, UserRound, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -14,6 +14,7 @@ import { useOnline } from '../lib/useOnline';
 import { Avatar, Button, Input, Modal } from '../components/ui';
 import { ProductForm } from '../components/ProductForm';
 import { useApproval } from '../components/Approval';
+import { PaperOptions, lastPaper, openPrint } from '../components/PaperChooser';
 import { useToast } from '../components/toast';
 
 interface Line { product: CatalogItem; qty: number; unitPrice: number; lineDiscount: number; serialNumber: string }
@@ -198,8 +199,6 @@ export default function PosPage() {
       loadCatalog(true);
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
-      const fmt = settings.data?.defaultPrintFormat ?? '80';
-      window.open(`/print/${r.sale.id}?format=${fmt}&auto=1`, '_blank', 'noopener');
     } catch (e) {
       if (e instanceof ApiError && e.code === 'APPROVAL_CANCELLED') return;
       if (e instanceof ApiError && e.status === 0) {
@@ -438,14 +437,9 @@ export default function PosPage() {
             {toNum(done.changeDue) > 0 ? (
               <div className="mt-4 w-full rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-600/15"><p className="text-sm font-medium text-emerald-800">Change due</p><p className="text-4xl font-extrabold tracking-tight tabular-nums text-emerald-700">{money(done.changeDue)}</p></div>
             ) : <p className="mt-4 text-lg font-semibold text-slate-800">Paid in full</p>}
-            <p className="mt-4 text-xs text-slate-500">The receipt opened in a new tab. Print again:</p>
-            <div className="mt-2 grid w-full grid-cols-4 gap-2">
-              {(['80', '58', 'A4'] as const).map((f) => (
-                <Button key={f} variant="secondary" size="sm" onClick={() => window.open(`/print/${done.id}?format=${f}&auto=1`, '_blank', 'noopener')}><Printer className="h-3.5 w-3.5" />{f === 'A4' ? 'A4' : `${f}mm`}</Button>
-              ))}
-              <Button variant="secondary" size="sm" onClick={() => window.open(`/api/sales/${done.id}/invoice.pdf`, '_blank', 'noopener')}><FileDown className="h-3.5 w-3.5" />PDF</Button>
-            </div>
-            <Button size="lg" className="mt-5 w-full" onClick={() => { setDone(null); searchRef.current?.focus(); }} autoFocus>New sale</Button>
+            <p className="mb-2 mt-5 self-start text-sm font-semibold text-slate-800">Print receipt: choose paper size</p>
+            <PaperOptions preferred={lastPaper(settings.data?.defaultPrintFormat)} onPick={(p) => openPrint(done.id, p)} />
+            <Button size="lg" variant="secondary" className="mt-4 w-full" onClick={() => { setDone(null); searchRef.current?.focus(); }}>New sale (no print)</Button>
           </div>
         )}
       </Modal>

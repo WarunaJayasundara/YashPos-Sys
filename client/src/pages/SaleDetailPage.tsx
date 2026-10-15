@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Ban, FileDown, Printer, RotateCcw } from 'lucide-react';
+import { Ban, Printer, RotateCcw } from 'lucide-react';
+import { usePaperChooser } from '../components/PaperChooser';
 import { api, ApiError, errorText } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { dateTime, METHOD_LABEL, money, today, toNum } from '../lib/format';
@@ -18,6 +19,7 @@ export default function SaleDetailPage() {
   const toast = useToast();
   const qc = useQueryClient();
   const { run, dialog } = useApproval();
+  const paper = usePaperChooser();
   const [voidOpen, setVoidOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,19 +46,16 @@ export default function SaleDetailPage() {
     }
   };
 
-  const print = (format: string) => window.open(`/print/${s.id}?format=${format}&auto=1&reprint=1`, '_blank', 'noopener');
 
   return (
     <div className="space-y-4">
       {dialog}
+      {paper.dialog}
       <PageHeader
         title={s.invoiceNumber}
         subtitle={<>{dateTime(s.createdAt)} · {s.cashierName} <Badge tone={SALE_STATUS[s.status].tone} className="ml-1">{SALE_STATUS[s.status].label}</Badge></>}
         actions={<>
-          <Button variant="secondary" onClick={() => print('80')}><Printer className="h-4 w-4" />Reprint 80mm</Button>
-          <Button variant="secondary" onClick={() => print('58')}>58mm</Button>
-          <Button variant="secondary" onClick={() => print('A4')}>A4</Button>
-          <Button variant="secondary" onClick={() => window.open(`/api/sales/${s.id}/invoice.pdf`, '_blank', 'noopener')}><FileDown className="h-4 w-4" />PDF</Button>
+          <Button variant="secondary" onClick={() => paper.ask(s.id, true)}><Printer className="h-4 w-4" />Print / PDF</Button>
           {can('returns.create', 'returns.approve') && !['VOIDED', 'RETURNED'].includes(s.status) && (
             <Button variant="secondary" onClick={() => nav(`/returns?invoice=${encodeURIComponent(s.invoiceNumber)}`)}><RotateCcw className="h-4 w-4" />Return / exchange</Button>
           )}

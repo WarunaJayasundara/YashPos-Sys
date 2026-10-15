@@ -10,8 +10,9 @@ Printing uses the browser's normal print system with page sizes set by CSS (`@pa
 
 There is also a server-generated **PDF** (A4) for e-mailing or WhatsApp: *Sales history → sale → PDF*.
 
-After a sale the POS opens the receipt in a new tab in the default format (*Settings → Default print format*) and
-opens the print dialog. Old invoices can be reprinted from *Sales history* (reprints are written to the audit log).
+Before every print the POS asks for the paper size: **80 mm**, **58 mm**, **A4 invoice** or **PDF**. The size used last
+on that device is pre-selected (press Enter to print it); a new device starts with *Settings → Default print format*.
+The receipt then opens in a new tab with the print dialog. Old invoices can be reprinted from *Sales history* (*Print / PDF* button) (reprints are written to the audit log).
 The receipt is always rebuilt from the stored sale, so prices changed later never appear on an old invoice.
 
 ## One-time printer setup (Windows)

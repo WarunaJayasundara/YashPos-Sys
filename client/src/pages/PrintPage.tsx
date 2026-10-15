@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import type { Sale, Settings } from '../lib/types';
 import { ErrorBox, Loading, Button } from '../components/ui';
 import { Receipt, A4Invoice } from '../components/Receipt';
+import { PaperOptions, lastPaper, openPrint } from '../components/PaperChooser';
 
 export type PrintFormat = '58' | '80' | 'A4';
 
@@ -14,20 +15,36 @@ export default function PrintPage() {
   const { id } = useParams();
   const [sp, setSp] = useSearchParams();
   const q = useQuery({ queryKey: ['receipt', id], queryFn: () => api.get<{ sale: Sale; settings: Settings }>(`/sales/${id}/receipt`) });
-  const format = (sp.get('format') ?? q.data?.settings.defaultPrintFormat ?? '80') as PrintFormat;
+  const chosen = sp.get('format') as PrintFormat | null;
+  const format = chosen ?? '80';
 
   useEffect(() => {
     if (!q.data) return;
     if (sp.get('reprint') === '1') api.post(`/sales/${id}/reprint`).catch(() => undefined);
-    if (sp.get('auto') === '1') {
+    if (chosen && sp.get('auto') === '1') {
       const t = setTimeout(() => window.print(), 350);
       return () => clearTimeout(t);
     }
-  }, [q.data, id, sp]);
+  }, [q.data, id, sp, chosen]);
 
   if (q.isLoading) return <Loading />;
   if (q.error) return <div className="p-6"><ErrorBox error={q.error} /></div>;
   const { sale, settings } = q.data!;
+  if (!chosen) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-100 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-pop">
+          <h1 className="text-base font-semibold text-slate-900">Choose paper size</h1>
+          <p className="mb-4 mt-1 text-sm text-slate-500">Invoice {sale.invoiceNumber}</p>
+          <PaperOptions preferred={lastPaper(settings.defaultPrintFormat)} onPick={(p) => {
+            if (p === 'PDF') return openPrint(sale.id, 'PDF');
+            try { localStorage.setItem('yash.lastPaper', p); } catch { /* storage blocked */ }
+            setSp({ format: p, auto: '1' });
+          }} />
+        </div>
+      </div>
+    );
+  }
   const page = format === 'A4' ? '@page { size: A4; margin: 12mm; }' : `@page { size: ${format}mm auto; margin: 2mm; }`;
 
   return (

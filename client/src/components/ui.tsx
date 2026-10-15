@@ -134,10 +134,6 @@ export function Loading({ label = 'Loading...' }: { label?: string }) {
   );
 }
 
-export function Spinner({ label }: { label?: string }) {
-  return <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500" role="status"><Loader2 className="h-5 w-5 animate-spin" />{label}</div>;
-}
-
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">

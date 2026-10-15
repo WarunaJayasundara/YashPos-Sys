@@ -37,11 +37,6 @@ class Fmt
         return self::$types;
     }
 
-    public static function forget(): void
-    {
-        self::$types = null;
-    }
-
     public static function dec(mixed $v): ?string
     {
         if ($v === null) {

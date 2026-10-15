@@ -5,9 +5,6 @@
          colors="true"
 >
     <testsuites>
-        <testsuite name="Unit">
-            <directory>tests/Unit</directory>
-        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
@@ -26,7 +23,6 @@
         <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_DATABASE" value="yash_pos_phptest"/>
         <env name="LOGIN_RATE_LIMIT" value="5"/>
-        <env name="SEED_DEMO" value="0"/>
         <env name="COOKIE_SECURE" value="0"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>

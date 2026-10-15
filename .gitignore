@@ -7,5 +7,3 @@ backups/
 coverage/
 *.tsbuildinfo
 release/
-# leftovers of the old Node server (removed in 2.0)
-server/

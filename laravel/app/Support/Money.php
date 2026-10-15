@@ -26,11 +26,6 @@ class Money
         return $sign.intdiv($abs, 100).'.'.str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT);
     }
 
-    public static function num(mixed $v): float
-    {
-        return ($v === null || $v === '') ? 0.0 : (float) $v;
-    }
-
     /** Fixed decimals like JS toFixed. */
     public static function fixed(mixed $v, int $d = 2): string
     {

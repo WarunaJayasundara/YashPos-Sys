@@ -4,35 +4,13 @@ import 'dotenv/config';
 import type { Request } from 'express';
 import { prisma } from '../src/db.js';
 import { hashPassword, loadAuthUser } from '../src/lib/auth.js';
-import { DEFAULT_ROLES, PERMISSIONS } from '../src/lib/permissions.js';
+import { ensureAccessControl } from '../src/lib/setup.js';
 import { applyMovement } from '../src/services/inventory.js';
 import { createPurchase, receiveGoods } from '../src/services/purchases.js';
 import { createSale } from '../src/services/sales.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 const demo = process.env.SEED_DEMO ? process.env.SEED_DEMO === '1' : !isProd;
-
-async function seedAccessControl() {
-  for (const [code, description] of Object.entries(PERMISSIONS)) {
-    await prisma.permission.upsert({ where: { code }, update: { description }, create: { code, description } });
-  }
-  const perms = new Map((await prisma.permission.findMany()).map((p) => [p.code, p.id]));
-  for (const r of DEFAULT_ROLES) {
-    const role = await prisma.role.upsert({
-      where: { code: r.code },
-      update: {},
-      create: { code: r.code, name: r.name, maxDiscountPercent: r.maxDiscountPercent.toFixed(2), isSystem: true },
-    });
-    // admin always holds every permission; other roles only get defaults the first time
-    const existing = await prisma.rolePermission.count({ where: { roleId: role.id } });
-    if (r.code === 'admin' || existing === 0) {
-      await prisma.rolePermission.createMany({
-        data: r.permissions.map((p) => ({ roleId: role.id, permissionId: perms.get(p)! })),
-        skipDuplicates: true,
-      });
-    }
-  }
-}
 
 async function seedUsers() {
   const roles = new Map((await prisma.role.findMany()).map((r) => [r.code, r.id]));
@@ -166,8 +144,7 @@ async function seedDemo() {
 
 async function main() {
   console.log('Seeding YASH MOBILE POS...');
-  await seedAccessControl();
-  await prisma.businessSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  await ensureAccessControl();
   await seedUsers();
   if (demo) await seedDemo();
   console.log('Done.');

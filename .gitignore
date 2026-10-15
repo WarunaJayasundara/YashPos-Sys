@@ -8,3 +8,4 @@ backups/
 *.log
 coverage/
 *.tsbuildinfo
+release/

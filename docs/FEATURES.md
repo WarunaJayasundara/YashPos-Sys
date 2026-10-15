@@ -63,7 +63,7 @@ Inter typeface.
 ## How it was verified
 
 Automated (all passing at the time of writing):
-- **API, 44 tests** (`server/tests`), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
+- **API, 47 tests** (`server/tests`), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
   rate limiting, session revocation, cashier/manager restrictions on cost data and owner-only reports; product
   validation (duplicate SKU, barcode check digit, negative price, min > selling), price history, stock filters,
   price-change approval; purchase orders not changing stock, partial receipt with damaged units, freight allocation and

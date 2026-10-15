@@ -11,10 +11,10 @@ import { getCatalog, queueSale, syncCatalog, type CatalogItem } from '../lib/off
 import { money, toNum, uuid, METHOD_LABEL } from '../lib/format';
 import type { Sale, Settings } from '../lib/types';
 import { useOnline } from '../lib/useOnline';
-import { Avatar, Button, Input, Modal } from '../components/ui';
+import { Avatar, Button, Confirm, Input, Modal } from '../components/ui';
 import { ProductForm } from '../components/ProductForm';
 import { useApproval } from '../components/Approval';
-import { PaperOptions, lastPaper, openPrint } from '../components/PaperChooser';
+import { BillPreview, PaperOptions, lastPaper, type Paper } from '../components/PaperChooser';
 import { useToast } from '../components/toast';
 
 interface Line { product: CatalogItem; qty: number; unitPrice: number; lineDiscount: number; serialNumber: string }
@@ -65,6 +65,9 @@ export default function PosPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [done, setDone] = useState<Sale | null>(null);
+  const [previewPaper, setPreviewPaper] = useState<Paper | null>(null);
+  const [fixing, setFixing] = useState<Sale | null>(null);
+  const [fixBusy, setFixBusy] = useState(false);
   const [savedOffline, setSavedOffline] = useState<string | null>(null);
   const [quickAdd, setQuickAdd] = useState<string | null>(null);
   const requestId = useRef(uuid());
@@ -186,6 +189,37 @@ export default function PosPage() {
     setSavedOffline(payload.clientRequestId);
     setPayOpen(false);
     reset();
+  };
+
+  const closeDone = () => { setDone(null); setPreviewPaper(null); };
+
+  /** Cancels the just-made bill (stock goes back) and reloads its items into the cart for correction. */
+  const fixItems = async (s: Sale) => {
+    setFixBusy(true);
+    try {
+      await run((approval) => api.post(`/sales/${s.id}/void`, { reason: 'Corrected at the till: items re-entered', approval }));
+      await syncCatalog().catch(() => undefined);
+      const fresh = await getCatalog();
+      setCatalog(fresh);
+      const byId = new Map(fresh.map((c) => [c.id, c]));
+      setLines(s.items.flatMap((it) => {
+        const product = byId.get(it.productId);
+        return product ? [{ product, qty: it.qty, unitPrice: toNum(it.unitPrice), lineDiscount: toNum(it.lineDiscount), serialNumber: it.serialNumber ?? '' }] : [];
+      }));
+      setBillDiscount(toNum(s.billDiscount) > 0 ? String(toNum(s.billDiscount)) : '');
+      setDiscountPct(false);
+      setCustomer({ name: s.customerName ?? '', phone: s.customerPhone ?? '' });
+      setFixing(null);
+      closeDone();
+      setCartOpen(true);
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      toast(`${s.invoiceNumber} cancelled. Correct the items and charge again.`, 'info');
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'APPROVAL_CANCELLED')) toast(errorText(e), 'error');
+    } finally {
+      setFixBusy(false);
+    }
   };
 
   const checkout = async (pays: Pay[]) => {
@@ -429,20 +463,28 @@ export default function PosPage() {
         )}
       </Modal>
 
-      <Modal open={!!done} onClose={() => setDone(null)} title="Sale completed">
-        {done && (
+      <Modal open={!!done} onClose={closeDone} title={previewPaper ? 'Check the bill' : 'Sale completed'} wide={!!previewPaper}>
+        {done && previewPaper && (
+          <BillPreview saleId={done.id} paper={previewPaper} onPaper={setPreviewPaper} onBack={() => setPreviewPaper(null)} onClose={closeDone}
+            onUpdated={setDone} onFixItems={setFixing} />
+        )}
+        {done && !previewPaper && (
           <div className="flex flex-col items-center pb-2 text-center">
             <span className="mt-1 grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-600 animate-pop"><CheckCircle2 className="h-9 w-9" /></span>
             <p className="mt-3 text-sm text-slate-500">Invoice <b className="text-slate-800">{done.invoiceNumber}</b> · total {money(done.total)}</p>
             {toNum(done.changeDue) > 0 ? (
               <div className="mt-4 w-full rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-600/15"><p className="text-sm font-medium text-emerald-800">Change due</p><p className="text-4xl font-extrabold tracking-tight tabular-nums text-emerald-700">{money(done.changeDue)}</p></div>
             ) : <p className="mt-4 text-lg font-semibold text-slate-800">Paid in full</p>}
-            <p className="mb-2 mt-5 self-start text-sm font-semibold text-slate-800">Print receipt: choose paper size</p>
-            <PaperOptions preferred={lastPaper(settings.data?.defaultPrintFormat)} onPick={(p) => openPrint(done.id, p)} />
-            <Button size="lg" variant="secondary" className="mt-4 w-full" onClick={() => { setDone(null); searchRef.current?.focus(); }}>New sale (no print)</Button>
+            <p className="mb-2 mt-5 self-start text-sm font-semibold text-slate-800">Print receipt: choose paper size, then check the bill</p>
+            <PaperOptions preferred={lastPaper(settings.data?.defaultPrintFormat)} onPick={setPreviewPaper} />
+            <Button size="lg" variant="secondary" className="mt-4 w-full" onClick={() => { closeDone(); searchRef.current?.focus(); }}>New sale (no print)</Button>
           </div>
         )}
       </Modal>
+
+      <Confirm open={!!fixing} title="Fix items on this bill?" confirmLabel="Cancel bill and fix" danger loading={fixBusy}
+        message={<>Invoice <b>{fixing?.invoiceNumber}</b> will be cancelled and its stock put back. The items return to the cart so you can correct them and charge again; the new bill gets a new number. A supervisor may need to approve.</>}
+        onConfirm={() => fixing && fixItems(fixing)} onClose={() => setFixing(null)} />
 
       <Modal open={!!savedOffline} onClose={() => setSavedOffline(null)} title="Saved on this device" footer={<Button onClick={() => setSavedOffline(null)}>OK</Button>}>
         <div className="flex gap-3 text-sm"><CloudOff className="h-6 w-6 shrink-0 text-amber-600" /><p>The sale is <b>pending</b>: it is stored on this device and will be sent when the connection returns. It has no invoice number until the server accepts it, and stock is re-checked then.</p></div>

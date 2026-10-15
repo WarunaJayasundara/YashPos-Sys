@@ -12,6 +12,14 @@ There is also a server-generated **PDF** (A4) for e-mailing or WhatsApp: *Sales 
 
 Before every print the POS asks for the paper size: **80 mm**, **58 mm**, **A4 invoice** or **PDF**. The size used last
 on that device is pre-selected (press Enter to print it); a new device starts with *Settings → Default print format*.
+Next a **Check the bill** screen shows the bill exactly as it will print (you can still switch paper size there):
+
+- **Edit details** (optional): change the customer name, phone or add a note to the bill. Items and amounts are part of the
+  sales record and cannot be edited; every edit is written to the audit log. Credit bills keep their customer.
+- **Fix items** (only right after a sale): cancels the bill (stock goes back, needs void permission or a supervisor's
+  approval) and puts its items back in the cart so the cashier can correct them and charge again under a new number.
+- **Print** / **Open PDF** sends it to the printer.
+
 The receipt then opens in a new tab with the print dialog. Old invoices can be reprinted from *Sales history* (*Print / PDF* button) (reprints are written to the audit log).
 The receipt is always rebuilt from the stored sale, so prices changed later never appear on an old invoice.
 

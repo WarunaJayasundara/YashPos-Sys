@@ -48,6 +48,7 @@ export function Receipt({ sale, settings, width }: { sale: Sale; settings: Setti
       </>}
       {toNum(sale.balanceDue) > 0 && <div className="row bold"><span>Balance due</span><span>{plain(sale.balanceDue)}</span></div>}
       {sale.returns.map((r) => <div key={r.id} className="row"><span>Returned {r.returnNumber}</span><span>-{plain(r.refundTotal)}</span></div>)}
+      {sale.notes && <div style={{ marginTop: 3 }}>Note: {sale.notes}</div>}
       <div className="rule" />
       {settings.warrantyPolicy && sale.items.some((i) => i.warrantyMonths > 0) && <div style={{ fontSize: '0.85em', marginBottom: 4 }}>{settings.warrantyPolicy}</div>}
       <div className="center">{settings.receiptFooter}</div>
@@ -106,6 +107,7 @@ export function A4Invoice({ sale, settings }: { sale: Sale; settings: Settings }
         {toNum(sale.balanceDue) > 0 && <Row k="Balance due" v={plain(sale.balanceDue)} bold />}
         {sale.returns.map((r) => <Row key={r.id} k={`Returned ${r.returnNumber}`} v={`-${plain(r.refundTotal)}`} />)}
       </div>
+      {sale.notes && <p className="mt-6"><b>Note:</b> {sale.notes}</p>}
       {settings.warrantyPolicy && <div className="mt-8 text-[11px] text-slate-600"><b>Warranty:</b> {settings.warrantyPolicy}</div>}
       <p className="mt-8 text-center">{settings.receiptFooter}</p>
     </div>

@@ -3,6 +3,38 @@ import { ensureUser, H, login, makeProduct, sale, uid } from './helpers.js';
 import { prisma } from '../src/db.js';
 
 describe('POS sales', () => {
+  it('edits the customer and note (audited) but never its items or money', async () => {
+    const cashier = await ensureUser('t_cashier', 'cashier');
+    const p = await makeProduct();
+    const r = await cashier.post('/api/sales').set(H).send(sale(p.id, 2));
+    const id = r.body.sale.id;
+    const e = await cashier.patch(`/api/sales/${id}/details`).set(H).send({ customerName: 'Kamal', customerPhone: '0771234567', notes: 'Gift wrap', total: 1, items: [] });
+    expect(e.status).toBe(200);
+    expect(e.body).toMatchObject({ customerName: 'Kamal', customerPhone: '0771234567', notes: 'Gift wrap', total: '3600' });
+    expect(e.body.customerId).toEqual(expect.any(Number));
+    expect(e.body.items).toHaveLength(1);
+    const log = await prisma.auditLog.findFirst({ where: { action: 'sale.edit_details', entityId: String(id) } });
+    expect(log).not.toBeNull();
+    expect((await cashier.patch(`/api/sales/${id}/details`).set(H).send({ notes: '' })).body.notes).toBeNull();
+    // another cashier cannot edit someone else's bill; voided bills are locked
+    const other = await ensureUser('t_cashier2', 'cashier');
+    expect((await other.patch(`/api/sales/${id}/details`).set(H).send({ notes: 'x' })).status).toBe(403);
+    const owner = await login('owner', 'Owner@12345');
+    await owner.post(`/api/sales/${id}/void`).set(H).send({ reason: 'test void' }).expect(200);
+    expect((await owner.patch(`/api/sales/${id}/details`).set(H).send({ notes: 'x' })).status).toBe(409);
+  });
+
+  it('does not change the customer of a credit bill', async () => {
+    const owner = await login('owner', 'Owner@12345');
+    const p = await makeProduct({ sellingPrice: 1000 });
+    const r = await owner.post('/api/sales').set(H).send({ ...sale(p.id, 1), customer: { phone: `07${Date.now() % 1e8}`, name: 'Credit C' }, payments: [{ method: 'CREDIT', amount: 1000 }] });
+    expect(r.status).toBe(201);
+    const e = await owner.patch(`/api/sales/${r.body.sale.id}/details`).set(H).send({ customerName: 'Someone else' });
+    expect(e.status).toBe(409);
+    expect(e.body.error.code).toBe('CREDIT_CUSTOMER');
+    expect((await owner.patch(`/api/sales/${r.body.sale.id}/details`).set(H).send({ notes: 'Pay by Friday' })).status).toBe(200);
+  });
+
   it('computes totals on the server and ignores client-sent totals', async () => {
     const cashier = await ensureUser('t_cashier', 'cashier');
     const p = await makeProduct({ sellingPrice: 1800 });

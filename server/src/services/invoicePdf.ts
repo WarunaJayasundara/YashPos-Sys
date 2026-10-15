@@ -83,6 +83,7 @@ export function renderInvoicePdf(s: SaleFull, st: BusinessSettings, out: Writabl
   }
   doc.fillColor('#000');
   y += 24;
+  if (s.notes) { doc.font('Helvetica-Bold').fontSize(9).text('Note: ', left, y, { continued: true }).font('Helvetica').text(s.notes, { width: right - left }); y = doc.y + 10; }
   if (st.warrantyPolicy) { doc.font('Helvetica-Bold').fontSize(8).text('Warranty', left, y); doc.font('Helvetica').text(st.warrantyPolicy, left, doc.y, { width: right - left }); y = doc.y + 10; }
   doc.font('Helvetica').fontSize(9).text(st.receiptFooter, left, y, { width: right - left, align: 'center' });
   doc.end();

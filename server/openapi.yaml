@@ -166,6 +166,7 @@ paths:
   /sales/{id}/invoice.pdf: { parameters: [{ $ref: '#/components/parameters/id' }], get: { summary: A4 PDF invoice, responses: { '200': { description: application/pdf } } } }
   /sales/{id}/reprint: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: Record a reprint in the audit log, responses: { '200': { description: OK } } } }
   /sales/{id}/void: { parameters: [{ $ref: '#/components/parameters/id' }], post: { summary: 'Void a same-day sale with no returns (sales.void or approval); restocks at original cost', responses: { '200': { description: OK } } } }
+  /sales/{id}/details: { parameters: [{ $ref: '#/components/parameters/id' }], patch: { summary: 'Edit customer name/phone and note on a bill (own bill, not voided, customer locked on credit bills); audited. Items and amounts never change', responses: { '200': { description: OK } } } }
 
   /returns:
     get: { summary: Returns in a date range, responses: { '200': { description: OK } } }

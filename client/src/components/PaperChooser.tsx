@@ -1,7 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { FileDown, Printer, Receipt as ReceiptIcon, FileText } from 'lucide-react';
-import { Modal } from './ui';
+import { ArrowLeft, FileDown, FileText, Pencil, Printer, Receipt as ReceiptIcon, Wrench } from 'lucide-react';
+import { api, errorText } from '../lib/api';
+import { toNum } from '../lib/format';
+import type { Sale, Settings } from '../lib/types';
+import { Button, Input, Modal } from './ui';
+import { A4Invoice, Receipt } from './Receipt';
+import { useToast } from './toast';
 
 export type Paper = '80' | '58' | 'A4' | 'PDF';
 
@@ -30,7 +36,7 @@ export function openPrint(saleId: number, paper: Paper, reprint = false) {
   window.open(url, '_blank', 'noopener');
 }
 
-/** Paper-size tiles. The last-used size is focused, so Enter prints it. */
+/** Paper-size tiles. The last-used size is focused, so Enter picks it. */
 export function PaperOptions({ onPick, preferred }: { onPick: (p: Paper) => void; preferred: Paper }) {
   let used = false;
   try { used = !!localStorage.getItem(KEY); } catch { /* storage blocked */ }
@@ -60,16 +66,109 @@ export function PaperOptions({ onPick, preferred }: { onPick: (p: Paper) => void
   );
 }
 
-/** "Choose paper size" dialog shown before every print. */
+/** Bill exactly as it will print, with optional edits, before anything goes to the printer. */
+export function BillPreview({ saleId, paper, reprint, onPaper, onBack, onClose, onUpdated, onFixItems }: {
+  saleId: number; paper: Paper; reprint?: boolean; onPaper: (p: Paper) => void; onBack?: () => void; onClose: () => void;
+  onUpdated?: (s: Sale) => void; onFixItems?: (s: Sale) => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery({ queryKey: ['receipt', String(saleId)], queryFn: () => api.get<{ sale: Sale; settings: Settings }>(`/sales/${saleId}/receipt`) });
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ customerName: '', customerPhone: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const sale = q.data?.sale;
+
+  useEffect(() => {
+    if (sale) setForm({ customerName: sale.customerName ?? '', customerPhone: sale.customerPhone ?? '', notes: sale.notes ?? '' });
+  }, [sale]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const s = await api.patch<Sale>(`/sales/${saleId}/details`, form);
+      await qc.invalidateQueries({ queryKey: ['receipt', String(saleId)] });
+      qc.invalidateQueries({ queryKey: ['sale'] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      onUpdated?.(s);
+      setEditing(false);
+      toast('Bill updated');
+    } catch (e) {
+      toast(errorText(e), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onCredit = toNum(sale?.balanceDue) > 0;
+  const voided = sale?.status === 'VOIDED';
+  const print = () => { openPrint(saleId, paper, reprint); onClose(); };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Paper size">
+        {OPTIONS.map((o) => (
+          <button key={o.id} type="button" onClick={() => onPaper(o.id)}
+            className={clsx('rounded-lg border px-3 py-1.5 text-xs font-semibold transition', o.id === paper ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50')}>
+            {o.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="max-h-[46dvh] overflow-auto rounded-xl bg-slate-100 p-3 ring-1 ring-slate-200" aria-label="Bill preview">
+        {!q.data ? <p className="p-6 text-center text-sm text-slate-500">{q.error ? errorText(q.error) : 'Loading bill…'}</p> : (
+          <div className="flex justify-center">
+            {paper === 'A4' || paper === 'PDF' ? (
+              <div className="origin-top bg-white p-4 shadow-sm" style={{ width: 794, zoom: 0.55 }}><A4Invoice sale={q.data.sale} settings={q.data.settings} /></div>
+            ) : (
+              <div className="bg-white p-2 shadow-sm"><Receipt sale={q.data.sale} settings={q.data.settings} width={paper} /></div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {editing && sale && (
+        <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input label="Customer name" value={form.customerName} disabled={onCredit} maxLength={120} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
+            <Input label="Customer phone" value={form.customerPhone} disabled={onCredit} maxLength={30} inputMode="tel" onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} />
+          </div>
+          {onCredit && <p className="text-xs text-amber-700">This bill is on credit, so the customer can't be changed.</p>}
+          <Input label="Note on the bill (optional)" value={form.notes} maxLength={255} placeholder="e.g. Delivered to shop counter" onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <p className="text-xs text-slate-500">Items and amounts can't be edited here; they are part of the sales record.{onFixItems ? ' Use "Fix items" instead.' : ' Use a return for those.'}</p>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" loading={saving} onClick={save}>Save changes</Button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {onBack && <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="h-4 w-4" />Back</Button>}
+        {!editing && !voided && <Button variant="secondary" size="sm" onClick={() => setEditing(true)} disabled={!sale}><Pencil className="h-4 w-4" />Edit details</Button>}
+        {onFixItems && sale?.status === 'COMPLETED' && !editing && (
+          <Button variant="secondary" size="sm" onClick={() => onFixItems(sale)}><Wrench className="h-4 w-4" />Fix items</Button>
+        )}
+        <span className="flex-1" />
+        <Button onClick={print} disabled={!sale || editing} autoFocus>
+          {paper === 'PDF' ? <><FileDown className="h-4 w-4" />Open PDF</> : <><Printer className="h-4 w-4" />Print</>}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Choose paper, preview (and optionally edit) the bill, then print. */
 export function usePaperChooser(fallback?: string) {
   const [target, setTarget] = useState<{ saleId: number; reprint: boolean } | null>(null);
-  const ask = useCallback((saleId: number, reprint = false) => setTarget({ saleId, reprint }), []);
-  const close = useCallback(() => setTarget(null), []);
+  const [paper, setPaper] = useState<Paper | null>(null);
+  const ask = useCallback((saleId: number, reprint = false) => { setPaper(null); setTarget({ saleId, reprint }); }, []);
+  const close = useCallback(() => { setTarget(null); setPaper(null); }, []);
   const dialog = (
-    <Modal open={!!target} onClose={close} title="Choose paper size">
-      {target && (
-        <PaperOptions preferred={lastPaper(fallback)} onPick={(p) => { openPrint(target.saleId, p, target.reprint); close(); }} />
-      )}
+    <Modal open={!!target} onClose={close} title={paper ? 'Check the bill' : 'Choose paper size'} wide={!!paper}>
+      {target && (paper
+        ? <BillPreview saleId={target.saleId} paper={paper} reprint={target.reprint} onPaper={setPaper} onBack={() => setPaper(null)} onClose={close} />
+        : <PaperOptions preferred={lastPaper(fallback)} onPick={setPaper} />)}
     </Modal>
   );
   return { ask, dialog };

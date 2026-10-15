@@ -2,7 +2,8 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma, dateRange, getSettings } from '../db.js';
-import { ah, parse, forbidden, notFound, idParam } from '../lib/http.js';
+import { ah, parse, conflict, forbidden, notFound, idParam } from '../lib/http.js';
+import { toCents } from '../lib/money.js';
 import { can, requirePerm } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { createSale, saleInclude, saleInputSchema, voidSale, approvalSchema } from '../services/sales.js';
@@ -89,6 +90,37 @@ salesRouter.post('/:id/reprint', requirePerm('sales.view_own', 'sales.view_all')
   const s = await loadVisibleSale(req, idParam(req));
   await audit(req, 'sale.reprint', 'sale', s.id, { invoiceNumber: s.invoiceNumber });
   res.json({ ok: true });
+}));
+
+const detailsSchema = z.object({
+  customerName: z.string().trim().max(120).nullable().optional(),
+  customerPhone: z.string().trim().max(30).nullable().optional(),
+  notes: z.string().trim().max(255).nullable().optional(),
+});
+
+/** Edits the printed details of a bill (customer, note). Items and money never change here: use void or return. */
+salesRouter.patch('/:id/details', requirePerm('sales.create', 'sales.void'), ah(async (req, res) => {
+  const body = parse(detailsSchema, req.body);
+  const s = await loadVisibleSale(req, idParam(req));
+  if (s.status === 'VOIDED') throw conflict('A voided sale cannot be edited');
+  const clean = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null);
+  const name = clean(body.customerName), phone = clean(body.customerPhone), notes = clean(body.notes);
+  const customerChanged = (name !== undefined && name !== s.customerName) || (phone !== undefined && phone !== s.customerPhone);
+  if (customerChanged && toCents(s.balanceDue) > 0) throw conflict('This bill is on customer credit; its customer cannot be changed', 'CREDIT_CUSTOMER');
+  const updated = await prisma.$transaction(async (tx) => {
+    let customerId = s.customerId;
+    if (phone !== undefined && phone !== s.customerPhone) {
+      customerId = phone ? (await tx.customer.upsert({ where: { phone }, update: {}, create: { phone, name: name ?? s.customerName ?? 'Walk-in customer' } })).id : null;
+    }
+    const row = await tx.sale.update({ where: { id: s.id }, data: { customerName: name, customerPhone: phone, notes, customerId }, include: saleInclude });
+    await audit(req, 'sale.edit_details', 'sale', s.id, {
+      invoiceNumber: s.invoiceNumber,
+      before: { customerName: s.customerName, customerPhone: s.customerPhone, notes: s.notes },
+      after: { customerName: row.customerName, customerPhone: row.customerPhone, notes: row.notes },
+    }, tx);
+    return row;
+  });
+  res.json(presentSale(req, updated));
 }));
 
 salesRouter.post('/:id/void', requirePerm('sales.create', 'sales.void'), ah(async (req, res) => {

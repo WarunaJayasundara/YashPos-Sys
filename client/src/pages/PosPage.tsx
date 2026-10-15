@@ -233,6 +233,7 @@ export default function PosPage() {
       loadCatalog(true);
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['stock-alerts'] });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'APPROVAL_CANCELLED') return;
       if (e instanceof ApiError && e.status === 0) {

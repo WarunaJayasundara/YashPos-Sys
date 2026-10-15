@@ -9,6 +9,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +31,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [ApiGuard::class]);
+        // keep input exactly as sent (empty optional fields stay ""): validation trims only where it should
+        $middleware->remove([ConvertEmptyStringsToNull::class, TrimStrings::class]);
         $middleware->append(SecurityHeaders::class);
         if (env('TRUST_PROXY', '0') === '1') {
             $middleware->trustProxies(at: '*');

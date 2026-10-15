@@ -186,6 +186,8 @@ paths:
   /cash/close: { post: { summary: Close a business day with counted cash (once per day), responses: { '201': { description: Created }, '409': { description: Already closed } } } }
   /cash/closings: { get: { summary: Past closings, responses: { '200': { description: OK } } } }
 
+  /alerts/stock: { get: { summary: 'Products at or below their reorder level, plus low-stock alerts of the last 7 days (stock.view, reports.inventory or products.manage)', responses: { '200': { description: OK } } } }
+  /alerts/test-email: { post: { summary: 'Send a test email to check the mail settings (settings.manage)', responses: { '200': { description: OK } } } }
   /dashboard: { get: { summary: 'Dashboard metrics; financial fields need dashboard.financial', parameters: [{ $ref: '#/components/parameters/from' }, { $ref: '#/components/parameters/to' }], responses: { '200': { description: OK } } } }
   /reports: { get: { summary: Reports available to the current user, responses: { '200': { description: OK } } } }
   /reports/{key}:

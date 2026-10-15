@@ -2,13 +2,29 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 /** Validation that fails with {error: {code: VALIDATION, details: {formErrors, fieldErrors}}}, the shape the app reads. */
 class V
 {
     public static function check(array $data, array $rules, array $messages = []): array
     {
+        // an empty amount box counts as 0 (as the original API did); empty text stays ""
+        $flat = Arr::dot($data);
+        foreach ($rules as $key => $rule) {
+            $list = is_array($rule) ? $rule : explode('|', $rule);
+            if (! in_array('numeric', $list, true)) {
+                continue;
+            }
+            $nullable = in_array('nullable', $list, true);
+            foreach ($flat as $path => $value) {
+                if (($value === '' || ($value === null && ! $nullable)) && Str::is($key, $path)) {
+                    Arr::set($data, $path, 0);
+                }
+            }
+        }
         $v = Validator::make($data, $rules, $messages);
         if ($v->fails()) {
             $fields = [];

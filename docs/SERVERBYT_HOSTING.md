@@ -75,7 +75,35 @@ https://pos.yourdomain.com/install?key=YOUR_INSTALL_KEY
 
 It should end with **"Owner account created."**. Then edit `.env` again and empty the `SEED_ADMIN_PASSWORD=` line (keep `INSTALL_KEY`: updates use it).
 
-## 9. Start selling
+## 9. Low-stock emails to the owner (optional, 5 minutes)
+
+The POS always shows low stock with the **bell** at the top of the screen. To also get an **email** when a product
+reaches its reorder level or sells out:
+
+1. cPanel → **Email Accounts** → **Create**: `pos@yourdomain.com` with a strong password (Ignite includes free email accounts).
+2. Edit `.env` and fill in the mail lines with that account:
+   ```
+   MAIL_MAILER=smtp
+   MAIL_SCHEME=smtps
+   MAIL_HOST=mail.yourdomain.com
+   MAIL_PORT=465
+   MAIL_USERNAME=pos@yourdomain.com
+   MAIL_PASSWORD=the email account's password
+   MAIL_FROM_ADDRESS="pos@yourdomain.com"
+   ```
+   (cPanel → Email Accounts → **Connect Devices** shows the exact server name and port if they differ.)
+3. In the POS: **Settings → Low-stock alerts** → enter the owner's email (Gmail is fine) → **Save settings** →
+   **Send a test email**. If it arrives, alerts are working. Check the spam folder the first time.
+
+Each product's **reorder level** (default 5) is on its product page under "More details".
+
+*Optional daily list:* cPanel → **Cron Jobs** → add, once a day at 8:00:
+```
+/usr/local/bin/php /home/YOUR_CPANEL_USER/yashpos/artisan pos:stock-alerts --summary
+```
+It emails the full list of low items every morning (the path to PHP is shown on the Cron Jobs page).
+
+## 10. Start selling
 
 1. Open **https://pos.yourdomain.com** → sign in as **`owner`** with the password from step 5.
 2. **My account**: change the password. **Settings**: shop name, address, phone, logo, receipt footer.
@@ -109,6 +137,7 @@ It should end with **"Owner account created."**. Then edit `.env` again and empt
 | `/install` says *Setup failed … Access denied* | Database name, user or password in `.env` does not match step 3 (check the `cpuser_` prefix). |
 | `/install` shows *404* | The `key=` value is not exactly the `INSTALL_KEY` in `.env`. |
 | Sign-in page loads but sign-in fails at once | HTTPS is not working yet (step 7): with `COOKIE_SECURE=1` the login cookie only works over https. |
+| "Send a test email" shows an error | The message says why. Usually the `MAIL_` lines in `.env`: check the password and that the host and port match cPanel's "Connect Devices". |
 | "Permission denied" in the log | File Manager → set `yashpos/storage` and `yashpos/bootstrap/cache` to **755** (775 if still failing). |
 
 To see the full error on screen for a minute: set `APP_DEBUG=true` in `.env`, reload, then set it back to `false`.

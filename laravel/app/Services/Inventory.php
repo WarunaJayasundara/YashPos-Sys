@@ -38,6 +38,8 @@ class Inventory
             }
             $qtyAfter = (int) $p->qtyOnHand;
             $unitCost = isset($m['unitCost']) ? (float) $m['unitCost'] : (float) $p->avgCost;
+            $availAfter = $p->qtyOnHand - $p->qtyReserved;
+            StockAlerts::check((int) $m['productId'], $availAfter + $need, $availAfter);
         } else {
             $row = DB::selectOne('SELECT qtyOnHand, avgCost FROM products WHERE id = ? FOR UPDATE', [$m['productId']]);
             if (! $row) {

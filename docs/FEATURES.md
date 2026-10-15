@@ -23,11 +23,17 @@ supplier invoice number and total, partial payments, outstanding balance, cancel
 adjustment) with user, reference and reason; adjustment requests with manager approval; oversell protection under
 concurrency.
 
+**Low-stock alerts**: a bell in the top bar (owner and manager) shows how many products are low or sold out, with the
+list, suppliers and a link to start a purchase. When a sale, return write-off or adjustment takes a product to its reorder
+level or to zero, the owner gets an email (sent after the sale, so the till never waits) and every open POS screen shows a
+pop-up, plus a device notification if allowed. Optional daily email with the full list (cron). Set in Settings.
+
 **POS**: keyboard-first screen (F2 search, arrow keys, Enter, F9 pay), keyboard-wedge barcode scanners (code +
 Enter), search by name/SKU/barcode/brand/model/connector, cart with quantity, price and line discount, bill discount,
 stock shown live, serial numbers for warranty items, optional customer, cash/card/bank transfer/QR/on-account and
 split payments, quick cash buttons and change due, supervisor approval for discounts over the limit or below the
-minimum price, idempotent submit, receipt opens automatically.
+minimum price, idempotent submit; after the sale the cashier chooses the paper size (80 mm, 58 mm, A4, PDF), checks the bill and
+can edit the customer and a note, or fix wrong items (cancels and re-rings with approval).
 
 **Invoices**: 80 mm and 58 mm thermal layouts, A4 layout, server-side A4 PDF, reprint from history (audited),
 configurable shop name, logo, address, phone, footer, warranty policy, tax label/rate/registration, invoice prefix,
@@ -63,7 +69,7 @@ Inter typeface.
 ## How it was verified
 
 Automated (all passing at the time of writing):
-- **API, 60 PHP tests** (`laravel/tests/Feature`, PHPUnit), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
+- **API, 71 PHP tests** (`laravel/tests/Feature`, PHPUnit), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
   rate limiting, session revocation, cashier/manager restrictions on cost data and owner-only reports; product
   validation (duplicate SKU, barcode check digit, negative price, min > selling), price history, stock filters,
   price-change approval; purchase orders not changing stock, partial receipt with damaged units, freight allocation and
@@ -73,7 +79,10 @@ Automated (all passing at the time of writing):
   numbers, discount limits and supervisor approval, minimum price, split/short/credit payments, historical cost kept
   after a new purchase price, own-sales visibility, audit entries, invoice snapshots after price changes, PDF output;
   partial and repeated returns, damaged returns, cashier return approval, void; gross profit with discounts and
-  returns, report date filters, net profit, cash closing excluding card payments, CSV export.
+  returns, report date filters, net profit, cash closing excluding card payments, CSV export; low-stock alerts (raised at
+  the reorder level and again when sold out, not repeated, none for a failed sale or an inactive product, emailed once,
+  switch off, daily summary, test email); every form accepting empty optional fields as the app sends them; and every
+  GET endpoint opened as owner, manager and cashier (owner gets everything, nobody gets a server error).
 - **Client, 17 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
   the same idempotency key, network still down, stock conflict kept for reconciliation, only the original cashier can
   sync, discard restores local stock), 80/58 mm and A4 receipt content, responsive table.

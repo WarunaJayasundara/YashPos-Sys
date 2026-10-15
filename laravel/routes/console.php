@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Setup;
+use App\Services\StockAlerts;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
@@ -18,3 +19,9 @@ Artisan::command('pos:setup', function () {
 Artisan::command('pos:prune-sessions', function () {
     $this->info(DB::table('sessions')->where('expiresAt', '<', now('UTC')->format('Y-m-d H:i:s.v'))->delete().' expired session(s) removed');
 })->purpose('Delete expired sessions');
+
+// php artisan pos:stock-alerts [--summary] -> email low-stock alerts not sent yet (or the full list, e.g. each morning)
+Artisan::command('pos:stock-alerts {--summary : email the full list of low items}', function () {
+    $n = $this->option('summary') ? StockAlerts::emailSummary() : StockAlerts::emailPending();
+    $this->info($n ? "Low-stock email sent ($n item(s))." : 'Nothing to send (no new alerts, or no alert email in Settings).');
+})->purpose('Email low-stock alerts to the owner');

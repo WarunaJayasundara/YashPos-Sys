@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AlertController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
@@ -101,4 +102,6 @@ Route::middleware(RequireAuth::class)->group(function () {
     Route::get('/reports', [ReportController::class, 'index']);
     Route::get('/reports/{key}', [ReportController::class, 'show']);
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/alerts/stock', [AlertController::class, 'stock']);
+    Route::post('/alerts/test-email', [AlertController::class, 'testEmail']);
 });

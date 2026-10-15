@@ -28,7 +28,7 @@ export interface Sale {
 export interface Settings {
   shopName: string; address: string; phone: string; email: string; logoUrl: string | null; receiptWidth: number;
   defaultPrintFormat: '58' | '80' | 'A4'; receiptFooter: string; warrantyPolicy: string; taxLabel: string; taxRate: D; taxRegNo: string;
-  invoicePrefix: string; currency: string; language: string;
+  invoicePrefix: string; currency: string; language: string; alertEmail?: string; lowStockAlerts?: boolean;
 }
 
 export interface Named { id: number; name: string; isActive?: boolean }

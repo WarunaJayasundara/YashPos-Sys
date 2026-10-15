@@ -11,6 +11,7 @@ import { useOnline, usePending } from '../lib/useOnline';
 import { lastSyncedAt, syncCatalog, syncPending } from '../lib/offline';
 import { dateTime } from '../lib/format';
 import { useToast } from './toast';
+import { StockBell } from './StockBell';
 
 interface Item { to: string; label: string; icon: LucideIcon; perms: string[] }
 const GROUPS: { title: string; items: Item[] }[] = [
@@ -95,7 +96,7 @@ function StatusPill({ s }: { s: ReturnType<typeof useSync> }) {
   const conflicts = s.pending.filter((p) => p.status === 'CONFLICT').length;
   if (!s.online) return <Link to="/offline" className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-600/20"><CloudOff className="h-3.5 w-3.5" />Offline{s.pending.length ? ` · ${s.pending.length} pending` : ''}</Link>;
   if (s.pending.length) return <Link to="/offline" className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-600/25"><RefreshCw className={clsx('h-3.5 w-3.5', s.busy && 'animate-spin')} />{s.pending.length - conflicts} to sync{conflicts ? ` · ${conflicts} to fix` : ''}</Link>;
-  return <span title={s.synced ? `Catalogue synced ${dateTime(s.synced)}` : undefined} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20"><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span>Online</span>;
+  return <span title={s.synced ? `Catalogue synced ${dateTime(s.synced)}` : undefined} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20"><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span><span className="hidden min-[400px]:inline">Online</span></span>;
 }
 
 function OfflineBanner({ s }: { s: ReturnType<typeof useSync> }) {
@@ -228,9 +229,10 @@ export function Layout({ children }: { children?: ReactNode }) {
       <div className={clsx('flex min-w-0 flex-1 flex-col transition-[padding] duration-200', slim ? 'lg:pl-[76px]' : 'lg:pl-64')}>
         <header className="no-print sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-slate-200/80 bg-white/85 px-3 backdrop-blur-md sm:px-5 lg:h-16 lg:px-8">
           <button className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
-          <Link to="/" className="flex items-center gap-2 lg:hidden"><img src="/icon.svg" alt="" className="h-7 w-7 rounded-lg" /><span className="text-sm font-extrabold tracking-wide text-ink-900">YASH <span className="text-brand-600">MOBILE</span></span></Link>
+          <Link to="/" className="flex items-center gap-2 lg:hidden"><img src="/icon.svg" alt="" className="h-7 w-7 rounded-lg" /><span className="whitespace-nowrap text-sm font-extrabold tracking-wide text-ink-900">YASH <span className="text-brand-600">MOBILE</span></span></Link>
           <p className="hidden text-sm text-slate-500 lg:block">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Colombo' })}</p>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <StockBell />
             <StatusPill s={s} />
             {can('sales.create') && !isPos && (
               <Link to="/pos" className="hidden h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/20 transition hover:bg-brand-700 sm:inline-flex"><ShoppingCart className="h-4 w-4" />New sale</Link>

@@ -193,9 +193,17 @@ class MoneyController
             'receiptFooter' => 'sometimes|string|max:255', 'warrantyPolicy' => 'sometimes|string|max:3000', 'taxLabel' => 'sometimes|string|max:20',
             'taxRate' => 'sometimes|numeric|min:0|max:50', 'taxRegNo' => 'sometimes|string|max:60',
             'invoicePrefix' => ['sometimes', 'regex:/^[A-Z0-9]{1,10}$/'], 'currency' => 'sometimes|string|max:10', 'language' => 'sometimes|in:en,si',
+            'alertEmail' => ['sometimes', 'nullable', 'string', 'max:120', fn ($a, $v, $fail) => $v === null || $v === '' || filter_var($v, FILTER_VALIDATE_EMAIL) || $fail('Enter a valid email address')],
+            'lowStockAlerts' => 'sometimes|boolean',
         ], ['invoicePrefix.regex' => 'Up to 10 capital letters/digits']);
         if (isset($d['taxRate'])) {
             $d['taxRate'] = number_format((float) $d['taxRate'], 2, '.', '');
+        }
+        if (array_key_exists('alertEmail', $d)) {
+            $d['alertEmail'] = trim((string) $d['alertEmail']);
+        }
+        if (isset($d['lowStockAlerts'])) {
+            $d['lowStockAlerts'] = (int) filter_var($d['lowStockAlerts'], FILTER_VALIDATE_BOOLEAN);
         }
         if (isset($d['receiptWidth'])) {
             $d['receiptWidth'] = (int) $d['receiptWidth'];

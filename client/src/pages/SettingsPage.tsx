@@ -23,10 +23,16 @@ export default function SettingsPage() {
         shopName: f.shopName, address: f.address, phone: f.phone, email: f.email, receiptWidth: Number(f.receiptWidth), defaultPrintFormat: f.defaultPrintFormat,
         receiptFooter: f.receiptFooter, warrantyPolicy: f.warrantyPolicy, taxLabel: f.taxLabel, taxRate: Number(f.taxRate), taxRegNo: f.taxRegNo,
         invoicePrefix: f.invoicePrefix, currency: f.currency, language: f.language, logoUrl: f.logoUrl,
+        alertEmail: f.alertEmail ?? '', lowStockAlerts: f.lowStockAlerts ?? true,
       });
       toast('Settings saved');
       qc.invalidateQueries({ queryKey: ['settings'] });
     } catch (err) { toast(errorText(err), 'error'); } finally { setBusy(false); }
+  };
+
+  const sendTest = async () => {
+    try { await api.post('/alerts/test-email', { email: f.alertEmail }); toast(`Test email sent to ${f.alertEmail}`); }
+    catch (e) { toast(errorText(e), 'error'); }
   };
 
   const uploadLogo = async (file: File) => {
@@ -73,6 +79,20 @@ export default function SettingsPage() {
             <Input label="Rate (%)" type="number" min={0} max={50} step="0.01" value={String(f.taxRate)} onChange={set('taxRate')} hint="0 = no tax line" />
             <Input label="Tax registration no." value={f.taxRegNo} onChange={set('taxRegNo')} />
             <p className="text-xs text-slate-500 sm:col-span-3">Tax is added on top of the discounted bill amount. Changing the rate affects new sales only; old invoices keep their stored tax.</p>
+          </div>
+        </Card>
+        <Card title="Low-stock alerts">
+          <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <Input label="Send alerts to (owner's email)" type="email" placeholder="owner@example.com" value={f.alertEmail ?? ''} onChange={set('alertEmail')}
+              hint="An email arrives as soon as a product reaches its reorder level or sells out." />
+            <label className="flex items-center gap-2 self-center text-sm text-slate-700">
+              <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={f.lowStockAlerts ?? true} onChange={(e) => setF({ ...f, lowStockAlerts: e.target.checked })} />
+              Email low-stock alerts
+            </label>
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <Button type="button" variant="secondary" size="sm" disabled={!f.alertEmail} onClick={sendTest}>Send a test email</Button>
+              <p className="text-xs text-slate-500">The bell at the top of the screen always shows what is low, even without email. Set each product's reorder level on the product page.</p>
+            </div>
           </div>
         </Card>
       </div>

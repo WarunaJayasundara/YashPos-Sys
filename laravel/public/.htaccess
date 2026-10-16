@@ -8,11 +8,15 @@ DirectoryIndex index.php
 
     RewriteEngine On
 
-    # Force HTTPS (skipped on localhost)
-    RewriteCond %{HTTPS} off
+    # Force HTTPS (skipped on localhost). If the site ever shows "too many redirects", delete this block (down to its RewriteRule).
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{SERVER_PORT} !=443
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{HTTP:X-Forwarded-SSL} !=on
     RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
-    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    # the address as typed (also right when the app sits in public_html and is rewritten into /public)
+    RewriteCond %{THE_REQUEST} \s(\S+)
+    RewriteRule ^ https://%{HTTP_HOST}%1 [L,R=301]
 
     # Never serve dotfiles such as .env
     RewriteRule (^|/)\.(?!well-known) - [F,L]
@@ -20,11 +24,6 @@ DirectoryIndex index.php
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-
-    # Redirect Trailing Slashes If Not A Folder...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_URI} (.+)/$
-    RewriteRule ^ %1 [L,R=301]
 
     # The app's own index.html is only served through Laravel
     RewriteRule ^index\.html$ index.php [L]

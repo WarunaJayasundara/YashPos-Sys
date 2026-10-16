@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { AlertTriangle, Inbox, Loader2, X, type LucideIcon } from 'lucide-react';
 import { forwardRef, useEffect, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiError, errorText } from '../lib/api';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'soft';
@@ -183,7 +184,8 @@ export function Modal({ open, onClose, title, children, footer, wide, full }: { 
     return () => { window.removeEventListener('keydown', k); document.body.style.overflow = prev; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // rendered on <body>: a parent with a filter/blur (like the top bar) would otherwise misplace a fixed dialog
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={clsx('flex w-full flex-col bg-white shadow-pop animate-slide-up sm:animate-fade-up',
         full ? 'h-[100dvh] sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-2xl' : 'max-h-[92dvh] rounded-t-3xl sm:rounded-2xl',
@@ -196,7 +198,8 @@ export function Modal({ open, onClose, title, children, footer, wide, full }: { 
         <div className="flex-1 overflow-y-auto px-5 pb-4">{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:rounded-b-2xl">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

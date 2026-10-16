@@ -68,8 +68,7 @@ Copy the **`INSTALL_KEY=`** value somewhere safe (step 8). Do not change `APP_KE
 
 When Serverbyt no longer says "not using our nameservers": StackCP → **Security → Free SSL** (Let's Encrypt) →
 turn it on for the domain (and `www`). Wait until it shows **Active**.
-
-The POS sends every visitor to `https://` by itself, so do this **before** step 8.
+On the same page switch on **Force HTTPS** (it sends every visitor to `https://`). Do this **before** step 8.
 
 ## Step 8. Create the tables and the owner account
 
@@ -132,7 +131,7 @@ It must end with **"Owner account created."** Then edit `.env` again and empty `
 | Error 500 / white page | File Manager → `public_html/storage/logs/laravel.log`: the last lines say why. Check the PHP version (step 3). |
 | `/install` says *Access denied* or *getaddrinfo* | `DB_HOST`, `DB_DATABASE`, `DB_USERNAME` or `DB_PASSWORD` in `.env` do not match step 4 exactly. |
 | `/install` shows *404* | The `key=` value is not exactly the `INSTALL_KEY` in `.env`. |
-| Browser says "too many redirects" | Edit `public_html/public/.htaccess` and delete the "Force HTTPS" block (from that comment down to its RewriteRule line). |
+| "Internal Server Error" (plain white page) | The host rejected a line in `public/.htaccess`; use the one from the latest zip (it only has rewrite lines). |
 | Browser says the connection is not private | SSL (step 7) is not active yet. Wait, then try again. |
 | Sign-in fails immediately | Use `https://` (the login cookie only works over HTTPS). |
 | "Send a test email" fails | Check the `MAIL_` lines; the username is the full email address. |

@@ -1,50 +1,19 @@
-# Pages go through Laravel (it adds the security headers); built files are served directly.
-DirectoryIndex index.php
+# Only mod_rewrite lines: hosts that restrict .htaccess reject Options, DirectoryIndex and Header lines with
+# "Internal Server Error". HTTPS: turn on the host's "Force HTTPS"; the app adds its security headers.
 
 <IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
-
     RewriteEngine On
 
-    # Force HTTPS (skipped on localhost). If the site ever shows "too many redirects", delete this block (down to its RewriteRule).
-    RewriteCond %{HTTPS} !=on
-    RewriteCond %{SERVER_PORT} !=443
-    RewriteCond %{HTTP:X-Forwarded-Proto} !https
-    RewriteCond %{HTTP:X-Forwarded-SSL} !=on
-    RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
-    # the address as typed (also right when the app sits in public_html and is rewritten into /public)
-    RewriteCond %{THE_REQUEST} \s(\S+)
-    RewriteRule ^ https://%{HTTP_HOST}%1 [L,R=301]
-
-    # Never serve dotfiles such as .env
+    # never serve hidden files such as .env
     RewriteRule (^|/)\.(?!well-known) - [F,L]
 
-    # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-    # The app's own index.html is only served through Laravel
+    # the app's pages go through Laravel (also the home page)
+    RewriteRule ^$ index.php [L]
     RewriteRule ^index\.html$ index.php [L]
-
-    # Send Requests To Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
-</IfModule>
-
-<IfModule mod_headers.c>
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set Referrer-Policy "no-referrer"
-    <FilesMatch "^(sw\.js|registerSW\.js|manifest\.webmanifest)$">
-        Header set Cache-Control "no-cache"
-    </FilesMatch>
-</IfModule>
-
-<IfModule mod_expires.c>
-    ExpiresActive On
-    ExpiresByType text/css "access plus 1 year"
-    ExpiresByType application/javascript "access plus 1 year"
 </IfModule>

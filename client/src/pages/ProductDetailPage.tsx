@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { Pencil, PackageMinus } from 'lucide-react';
-import { api } from '../lib/api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Pencil, PackageMinus, Trash2 } from 'lucide-react';
+import { api, errorText } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { dateTime, int, money } from '../lib/format';
 import type { Product } from '../lib/types';
-import { Badge, Button, Card, ErrorBox, Loading, Modal, PageHeader, Stat, STOCK_BADGE } from '../components/ui';
+import { Badge, Button, Card, Confirm, ErrorBox, Loading, Modal, PageHeader, Stat, STOCK_BADGE } from '../components/ui';
+import { useToast } from '../components/toast';
+import { UndoStock } from '../components/UndoStock';
 import { ProductForm } from '../components/ProductForm';
 import { AdjustmentForm } from './StockPage';
 
@@ -15,7 +17,7 @@ interface Detail extends Product {
   priceHistory?: { id: number; field: string; oldValue: string; newValue: string; reason: string | null; createdAt: string }[];
   variants: { id: number; name: string; sku: string; color: string | null; size: string | null; qtyOnHand: number }[];
 }
-interface Move { id: number; type: string; qtyChange: number; qtyAfter: number; unitCost?: string; refType: string | null; refId: number | null; reason: string | null; createdAt: string }
+interface Move { id: number; type: string; qtyChange: number; qtyAfter: number; unitCost?: string; refType: string | null; refId: number | null; reason: string | null; createdAt: string; undone?: boolean; canUndo?: boolean }
 
 const FIELD: Record<string, string> = { sellingPrice: 'Selling price', minSellingPrice: 'Minimum price', purchasePrice: 'Buying price' };
 
@@ -25,6 +27,10 @@ export default function ProductDetailPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const nav = useNavigate();
   const q = useQuery({ queryKey: ['product', id], queryFn: () => api.get<Detail>(`/products/${id}`) });
   const moves = useQuery({ queryKey: ['product-moves', id], queryFn: () => api.get<Move[]>(`/products/${id}/movements`), enabled: can('stock.view') });
 
@@ -42,6 +48,7 @@ export default function ProductDetailPage() {
         actions={<>
           {can('stock.adjust') && <Button variant="secondary" onClick={() => setAdjusting(true)}><PackageMinus className="h-4 w-4" />Adjust stock</Button>}
           {can('products.manage') && <Button onClick={() => setEditing(true)}><Pencil className="h-4 w-4" />Edit</Button>}
+          {can('products.delete') && <Button variant="secondary" className="text-red-700" onClick={() => setDeleting(true)}><Trash2 className="h-4 w-4" />Delete</Button>}
         </>}
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -82,7 +89,7 @@ export default function ProductDetailPage() {
           {!can('stock.view') ? <p className="p-4 text-sm text-slate-500">You cannot view stock history.</p> : moves.isLoading ? <Loading /> : (
             <div className="max-h-96 overflow-auto">
               <table className="min-w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50"><tr><th className="th">When</th><th className="th">Type</th><th className="th text-right">Change</th><th className="th text-right">Balance</th>{showCost && <th className="th text-right">Unit cost</th>}<th className="th">Ref / reason</th></tr></thead>
+                <thead className="sticky top-0 bg-slate-50"><tr><th className="th">When</th><th className="th">Type</th><th className="th text-right">Change</th><th className="th text-right">Balance</th>{showCost && <th className="th text-right">Unit cost</th>}<th className="th">Ref / reason</th><th className="th" /></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {moves.data?.map((m) => (
                     <tr key={m.id}>
@@ -92,6 +99,7 @@ export default function ProductDetailPage() {
                       <td className="td num">{m.qtyAfter}</td>
                       {showCost && <td className="td num">{money(m.unitCost)}</td>}
                       <td className="td text-xs text-slate-500">{m.refType === 'SALE' && m.refId ? <Link className="link" to={`/sales/${m.refId}`}>Sale</Link> : m.refType}{m.reason ? ` ${m.reason}` : ''}</td>
+                      <td className="td"><UndoStock move={{ ...m, product: { name: p.name } }} onDone={() => { refresh(); qc.invalidateQueries({ queryKey: ['stock-alerts'] }); }} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -117,6 +125,18 @@ export default function ProductDetailPage() {
       <Modal open={editing} onClose={() => setEditing(false)} title={`Edit ${p.name}`} wide>
         <ProductForm product={p} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); refresh(); }} />
       </Modal>
+      <Confirm open={deleting} onClose={() => setDeleting(false)} danger loading={busy} confirmLabel="Delete product" title={`Delete ${p.name}?`}
+        onConfirm={async () => {
+          setBusy(true);
+          try {
+            await api.del(`/products/${p.id}`);
+            toast(`${p.name} deleted`);
+            qc.invalidateQueries({ queryKey: ['products'] });
+            qc.invalidateQueries({ queryKey: ['stock-alerts'] });
+            nav('/products');
+          } catch (e) { toast(errorText(e), 'error'); setDeleting(false); } finally { setBusy(false); }
+        }}
+        message={<p>Use this for a product added by mistake. It is removed completely, with its stock entries. Products that were ever sold or purchased cannot be deleted: deactivate them instead (Edit, then untick Active).</p>} />
       <Modal open={adjusting} onClose={() => setAdjusting(false)} title="Stock adjustment">
         <AdjustmentForm productId={p.id} onDone={() => { setAdjusting(false); refresh(); }} />
       </Modal>

@@ -46,7 +46,51 @@ class StockController
             return $row;
         });
 
-        return response()->json($rows->all());
+        return response()->json(self::withUndo($rows->all()));
+    }
+
+    /** Entries the owner may undo: stock typed in by hand. Sales, returns and receipts have their own void/return steps. */
+    public const UNDOABLE = ['OPENING', 'ADJUSTMENT', 'DAMAGED', 'LOST', 'SUPPLIER_RETURN'];
+
+    /** Adds `undone` (already reversed) and `canUndo` to movement rows. */
+    public static function withUndo(array $rows): array
+    {
+        $ids = array_column($rows, 'id');
+        $undone = $ids ? DB::table('stock_movements')->where('refType', 'UNDO')->whereIn('refId', $ids)->pluck('refId')->flip() : collect();
+
+        return array_map(function ($m) use ($undone) {
+            $m['undone'] = isset($undone[$m['id']]);
+            $m['canUndo'] = ! $m['undone'] && $m['refType'] !== 'UNDO' && in_array($m['type'], self::UNDOABLE, true);
+
+            return $m;
+        }, $rows);
+    }
+
+    /** Reverses a wrong stock entry with an opposite movement; the original stays in the history, marked as undone. */
+    public function undo(Request $req, string $id): JsonResponse
+    {
+        Auth::require($req, 'stock.undo');
+        $d = V::check(V::trim($req->all(), ['reason']), ['reason' => 'sometimes|nullable|string|max:200']);
+        $id = V::id($id);
+        DB::transaction(function () use ($req, $id, $d) {
+            $m = DB::selectOne('SELECT * FROM stock_movements WHERE id = ? FOR UPDATE', [$id]);
+            if (! $m) {
+                throw ApiError::notFound('Stock entry not found');
+            }
+            if ($m->refType === 'UNDO' || ! in_array($m->type, self::UNDOABLE, true)) {
+                throw ApiError::conflict('Only opening stock and manual adjustments can be undone. Use a void or a return for sales.', 'NOT_UNDOABLE');
+            }
+            if (DB::table('stock_movements')->where('refType', 'UNDO')->where('refId', $id)->exists()) {
+                throw ApiError::conflict('This entry was already undone');
+            }
+            $why = trim((string) ($d['reason'] ?? '')) ?: 'entered by mistake';
+            // adding back restocks at the entry's own cost; removing fails cleanly if those units were sold meanwhile
+            Inventory::move(['productId' => (int) $m->productId, 'qtyChange' => -(int) $m->qtyChange, 'type' => 'ADJUSTMENT', 'unitCost' => (float) $m->unitCost,
+                'updateAverage' => $m->qtyChange < 0, 'userId' => Auth::id($req), 'refType' => 'UNDO', 'refId' => $id, 'reason' => "Undo of entry #$id: $why"]);
+            Audit::log($req, 'stock.undo', 'stock_movement', $id, ['productId' => (int) $m->productId, 'type' => $m->type, 'qtyChange' => (int) $m->qtyChange, 'reason' => $why]);
+        });
+
+        return response()->json(['ok' => true]);
     }
 
     private static function withProduct(object $a): array

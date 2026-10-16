@@ -358,7 +358,30 @@ class ProductController
             $rows = array_map(fn ($m) => collect($m)->except('unitCost')->all(), $rows);
         }
 
-        return response()->json($rows);
+        return response()->json(StockController::withUndo($rows));
+    }
+
+    /** Deletes a product added by mistake. Anything sold or purchased stays (deactivate it instead) so records remain true. */
+    public function destroy(Request $req, string $id): JsonResponse
+    {
+        Auth::require($req, 'products.delete');
+        $id = V::id($id);
+        $p = DB::table('products')->find($id);
+        if (! $p) {
+            throw ApiError::notFound('Product not found');
+        }
+        if (DB::table('sale_items')->where('productId', $id)->exists() || DB::table('purchase_items')->where('productId', $id)->exists()) {
+            throw ApiError::conflict("{$p->name} has sales or purchases, so it cannot be deleted. Deactivate it instead (Edit, then untick Active): it disappears from the POS but its history stays.", 'HAS_HISTORY');
+        }
+        DB::transaction(function () use ($req, $id, $p) {
+            foreach (['stock_alerts', 'stock_movements', 'stock_adjustments', 'price_history', 'warranties'] as $t) {
+                DB::table($t)->where('productId', $id)->delete();
+            }
+            DB::table('products')->where('id', $id)->delete();
+            Audit::log($req, 'product.delete', 'product', $id, ['sku' => $p->sku, 'name' => $p->name, 'qtyOnHand' => (int) $p->qtyOnHand]);
+        });
+
+        return response()->json(['ok' => true]);
     }
 
     public function uploadImage(Request $req): JsonResponse

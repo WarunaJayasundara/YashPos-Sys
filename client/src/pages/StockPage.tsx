@@ -11,11 +11,12 @@ import { DataTable } from '../components/Table';
 import { DateRange, type Range } from '../components/DateRange';
 import { ProductPicker } from '../components/ProductPicker';
 import { useToast } from '../components/toast';
+import { UndoStock } from '../components/UndoStock';
 
 const TYPES = ['OPENING', 'PURCHASE_RECEIPT', 'SALE', 'SALE_VOID', 'CUSTOMER_RETURN', 'SUPPLIER_RETURN', 'DAMAGED', 'LOST', 'ADJUSTMENT'];
 const label = (t: string) => t.replace(/_/g, ' ').toLowerCase();
 
-interface Move { id: number; productId: number; product: { name: string; sku: string }; type: string; qtyChange: number; qtyAfter: number; unitCost?: string; refType: string | null; refId: number | null; reason: string | null; user?: string; createdAt: string }
+interface Move { id: number; productId: number; product: { name: string; sku: string }; type: string; qtyChange: number; qtyAfter: number; unitCost?: string; refType: string | null; refId: number | null; reason: string | null; user?: string; createdAt: string; undone?: boolean; canUndo?: boolean }
 interface Adj { id: number; productId: number; product: { name: string; sku: string; qtyOnHand: number }; type: string; qtyChange: number; reason: string; status: string; createdAt: string }
 
 export function AdjustmentForm({ productId, onDone }: { productId?: number; onDone: () => void }) {
@@ -104,6 +105,7 @@ export default function StockPage() {
               ...(can('products.view_cost') ? [{ key: 'uc', header: 'Unit cost', num: true, render: (m: Move) => money(m.unitCost) }] : []),
               { key: 'u', header: 'By', render: (m) => m.user ?? '-' },
               { key: 'r', header: 'Reference', render: (m) => <span className="text-xs">{m.refType === 'SALE' && m.refId ? <Link className="link" to={`/sales/${m.refId}`}>Sale #{m.refId}</Link> : m.refType ?? ''} {m.reason}</span> },
+              { key: 'undo', header: '', render: (m) => <UndoStock move={m} onDone={() => { qc.invalidateQueries({ queryKey: ['movements'] }); qc.invalidateQueries({ queryKey: ['products'] }); qc.invalidateQueries({ queryKey: ['stock-alerts'] }); }} /> },
             ]} />
           )}
         </Card>

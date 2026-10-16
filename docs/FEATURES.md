@@ -24,7 +24,9 @@ supplier invoice number and total, partial payments, outstanding balance, cancel
 
 **Stock**: complete movement ledger (opening, receipt, sale, void, customer return, supplier return, damaged, lost,
 adjustment) with user, reference and reason; adjustment requests with manager approval; oversell protection under
-concurrency.
+concurrency. The owner can **undo** a wrong opening-stock entry or manual adjustment (an opposite entry is added; the original
+stays in the history marked "Undone", with who and why; refused if those units were already sold) and **delete** a product
+added by mistake, as long as it was never sold or purchased (otherwise deactivate it). Both are owner-only permissions.
 
 **Low-stock alerts**: a bell in the top bar (owner and manager) shows how many products are low or sold out, with the
 list, suppliers and a link to start a purchase. When a sale, return write-off or adjustment takes a product to its reorder
@@ -72,7 +74,7 @@ Inter typeface.
 ## How it was verified
 
 Automated (all passing at the time of writing):
-- **API, 71 PHP tests** (`laravel/tests/Feature`, PHPUnit), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
+- **API, 76 PHP tests** (`laravel/tests/Feature`, PHPUnit), against a real MySQL/MariaDB test database: authentication, cookie flags, CSRF,
   rate limiting, session revocation, cashier/manager restrictions on cost data and owner-only reports; product
   validation (duplicate SKU, barcode check digit, negative price, min > selling), price history, stock filters,
   price-change approval; purchase orders not changing stock, partial receipt with damaged units, freight allocation and

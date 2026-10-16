@@ -34,6 +34,7 @@ Route::middleware(RequireAuth::class)->group(function () {
     Route::post('/products', [ProductController::class, 'store']);
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::get('/products/{id}/movements', [ProductController::class, 'movements']);
+    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
     foreach (['categories' => 'categories', 'brands' => 'brands'] as $path => $table) {
         Route::get("/$path", [CatalogController::class, 'lookupIndex'])->defaults('table', $table);
@@ -58,6 +59,7 @@ Route::middleware(RequireAuth::class)->group(function () {
     Route::get('/stock/adjustments', [StockController::class, 'adjustments']);
     Route::post('/stock/adjustments', [StockController::class, 'requestAdjustment']);
     Route::post('/stock/adjustments/{id}/decide', [StockController::class, 'decide']);
+    Route::post('/stock/movements/{id}/undo', [StockController::class, 'undo']);
 
     Route::post('/sales', [SaleController::class, 'store']);
     Route::get('/sales', [SaleController::class, 'index']);

@@ -25,6 +25,9 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 const CACHE_KEY = 'yash.lastUser';
+// one sign-in cookie per browser: tell the other tabs when the person changes
+const SIGNAL_KEY = 'yash.signedIn';
+const signal = (username: string) => { try { localStorage.setItem(SIGNAL_KEY, `${username}|${Date.now()}`); } catch { /* storage blocked */ } };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -52,7 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
     const onUnauth = () => setUser(null);
     window.addEventListener('yash:unauthenticated', onUnauth);
-    return () => window.removeEventListener('yash:unauthenticated', onUnauth);
+    // another tab signed in as someone else or signed out: reload so no screen shows the previous person's data
+    const onStorage = (e: StorageEvent) => { if (e.key === SIGNAL_KEY) window.location.reload(); };
+    window.addEventListener('storage', onStorage);
+    return () => { window.removeEventListener('yash:unauthenticated', onUnauth); window.removeEventListener('storage', onStorage); };
   }, [refresh]);
 
   const login = async (username: string, password: string) => {
@@ -60,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(r.user);
     setUnreachable(false);
     try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(r.user)); } catch { /* ignore */ }
+    signal(r.user.username);
   };
 
   const logout = async () => {
@@ -67,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { sessionStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
     await clearSensitiveCache();
     setUser(null);
+    signal('');
   };
 
   const can = useCallback((...perms: string[]) => !!user && perms.some((p) => user.permissions.includes(p)), [user]);

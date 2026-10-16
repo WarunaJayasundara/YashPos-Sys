@@ -2,7 +2,8 @@
 
 ## Completed
 
-**Access control**: login/logout with server-side sessions, three default roles (Owner, Manager, Cashier) plus custom
+**Access control**: login/logout with server-side sessions (owner and cashiers can be signed in at the same time on
+different devices; in one browser a new sign-in replaces the old one and every open tab switches with it), three default roles (Owner, Manager, Cashier) plus custom
 roles, per-permission editing, per-role discount limits, supervisor approval dialog, cost and profit fields removed
 from API responses for unauthorised users, account deactivation, password change, login rate limiting, audit log.
 
@@ -13,7 +14,9 @@ model compatibility, colour, size, connector, variant group, buying price, weigh
 price, stock on hand / reserved / available, reorder and overstock levels with LOW / OUT / OVER badges, warranty
 months, image upload, active flag. Search, filters, paging, CSV export, all-or-nothing CSV import with row errors,
 price-change history, lifetime units/revenue/COGS/profit per product, stock movement history. From the POS, a search
-that finds nothing offers "Add as a new product", which creates it and puts it on the bill.
+that finds nothing offers "Add as a new product", which creates it and puts it on the bill. Brand and category are typed with
+suggestions ("sam" offers Samsung; "samsung" picks it, so no duplicates); a name that does not exist yet is added only
+after a confirmation, and only by users who manage the catalogue (owner, manager); others are told to ask the owner.
 
 **Purchases and suppliers**: suppliers with balances, purchase orders (draft/ordered), partial deliveries with
 received / damaged / missing quantities, stock increases only on receipt, landed cost (freight allocated by value),
@@ -83,7 +86,7 @@ Automated (all passing at the time of writing):
   the reorder level and again when sold out, not repeated, none for a failed sale or an inactive product, emailed once,
   switch off, daily summary, test email); every form accepting empty optional fields as the app sends them; and every
   GET endpoint opened as owner, manager and cashier (owner gets everything, nobody gets a server error).
-- **Client, 17 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
+- **Client, 21 tests** (`client/src/__tests__`): POS search ranking and barcode match, offline queue (pending, sync with
   the same idempotency key, network still down, stock conflict kept for reconciliation, only the original cashier can
   sync, discard restores local stock), 80/58 mm and A4 receipt content, responsive table.
 - Type check (`tsc`) and production build of the client.

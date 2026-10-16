@@ -9,6 +9,7 @@ import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from './toast';
 import { useApproval } from './Approval';
+import { LookupField } from './LookupField';
 import { ApiError } from '../lib/api';
 
 type Form = Record<string, string | boolean>;
@@ -97,14 +98,8 @@ export function ProductForm({ product, onSaved, onCancel, initialName = '' }: { 
         {more && (
           <div className="space-y-5 border-t border-slate-100 px-4 pb-4 pt-4">
             <fieldset className="grid gap-3 sm:grid-cols-2">
-              <Select label="Category" value={f.categoryId as string} onChange={set('categoryId')} error={errors.categoryId}>
-                <option value="">No category</option>
-                {cats.data?.filter((c) => c.isActive !== false || String(c.id) === f.categoryId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-              <Select label="Brand" value={f.brandId as string} onChange={set('brandId')}>
-                <option value="">No brand</option>
-                {brands.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
+              <LookupField kind="category" items={cats.data} value={f.categoryId as string} onChange={(v) => setF((x) => ({ ...x, categoryId: v }))} error={errors.categoryId} />
+              <LookupField kind="brand" items={brands.data} value={f.brandId as string} onChange={(v) => setF((x) => ({ ...x, brandId: v }))} error={errors.brandId} />
               <Input label="SKU / item code" value={f.sku as string} onChange={set('sku')} error={errors.sku} hint={product ? 'Unique code' : 'Leave empty to create one automatically'} placeholder={product ? undefined : 'Automatic'} />
               <Input label="Barcode" value={f.barcode as string} onChange={set('barcode')} error={errors.barcode} hint="Scan or type; EAN/UPC check digits are verified" />
               <Input label="Minimum selling price" type="number" min={0} step="0.01" value={f.minSellingPrice as string} onChange={set('minSellingPrice')} error={errors.minSellingPrice} hint="Below this needs approval. Empty = selling price" />

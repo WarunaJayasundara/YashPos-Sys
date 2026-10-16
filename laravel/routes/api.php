@@ -11,6 +11,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\SystemController;
 use App\Http\Middleware\RequireAuth;
 use App\Support\Clock;
 use App\Support\Fmt;
@@ -106,4 +107,5 @@ Route::middleware(RequireAuth::class)->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/alerts/stock', [AlertController::class, 'stock']);
     Route::post('/alerts/test-email', [AlertController::class, 'testEmail']);
+    Route::post('/system/clear-test-data', [SystemController::class, 'clearTestData']);
 });

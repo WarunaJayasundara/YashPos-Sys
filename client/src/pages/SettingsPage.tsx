@@ -4,6 +4,7 @@ import { api, errorText } from '../lib/api';
 import type { Settings } from '../lib/types';
 import { Button, Card, Input, Loading, PageHeader, Select, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
+import { ClearTestData } from '../components/ClearTestData';
 
 export default function SettingsPage() {
   const toast = useToast();
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   };
 
   return (
+    <>
     <form onSubmit={save}>
       <PageHeader title="Settings" subtitle="Business details and invoice layout" actions={<Button type="submit" loading={busy}>Save settings</Button>} />
       <div className="grid gap-4 lg:grid-cols-2">
@@ -97,5 +99,7 @@ export default function SettingsPage() {
         </Card>
       </div>
     </form>
+    <ClearTestData />
+    </>
   );
 }

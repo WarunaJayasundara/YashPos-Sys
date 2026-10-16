@@ -27,6 +27,9 @@ adjustment) with user, reference and reason; adjustment requests with manager ap
 concurrency. The owner can **undo** a wrong opening-stock entry or manual adjustment (an opposite entry is added; the original
 stays in the history marked "Undone", with who and why; refused if those units were already sold) and **delete** a product
 added by mistake, as long as it was never sold or purchased (otherwise deactivate it). Both are owner-only permissions.
+Before going live, **Settings → Clear test data** (owner only, needs the word CLEAR and the owner's password) removes all
+trial sales, returns, purchases, payments, expenses, cash closings and stock history and restarts invoice numbers; products
+are kept with their current stock (or optionally deleted too). Staff, settings, customers and suppliers stay.
 
 **Low-stock alerts**: a bell in the top bar (owner and manager) shows how many products are low or sold out, with the
 list, suppliers and a link to start a purchase. When a sale, return write-off or adjustment takes a product to its reorder

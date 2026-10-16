@@ -22,6 +22,7 @@ class Perms
         'stock.approve' => 'Approve stock adjustments',
         'stock.undo' => 'Undo wrong stock entries (opening stock and manual adjustments)',
         'products.delete' => 'Delete products that were never sold or purchased',
+        'data.reset' => 'Clear test sales, purchases and stock history before going live',
         'sales.create' => 'Use the POS to make sales',
         'sales.view_own' => 'View and reprint own sales',
         'sales.view_all' => 'View and reprint all sales',
